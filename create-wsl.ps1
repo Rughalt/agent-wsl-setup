@@ -48,6 +48,29 @@ function Invoke-Wsl {
     }
 }
 
+function Invoke-WslSetupScript {
+    param(
+        [Parameter(Mandatory)][string]$DistributionName,
+        [Parameter(Mandatory)][string]$ScriptInput,
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Arguments
+    )
+
+    # Windows PowerShell 5.1 defaults native-process stdin to ASCII. That
+    # silently turns UTF-8 prompt/MOTD characters into literal question marks.
+    # Scope the override to this pipeline so both Windows PowerShell and pwsh
+    # stream setup-wsl.sh to Bash as UTF-8 without a BOM.
+    $savedOutputEncoding = $OutputEncoding
+    try {
+        $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+        $ScriptInput |
+            & wsl.exe --distribution $DistributionName --user root -- bash -s -- @Arguments
+        $script:SetupExitCode = $LASTEXITCODE
+    }
+    finally {
+        $OutputEncoding = $savedOutputEncoding
+    }
+}
+
 function Remove-ManagedInstallLocation {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -100,12 +123,14 @@ foreach ($value in @($GitName, $GitEmail)) {
     }
 }
 
-$selectedTools = if ($Tools -contains 'all') {
-    @('devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode', 'shiori')
-}
-else {
-    @($Tools | Sort-Object -Unique)
-}
+$selectedTools = @(
+    if ($Tools -contains 'all') {
+        'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode', 'shiori'
+    }
+    else {
+        $Tools | Sort-Object -Unique
+    }
+)
 $script:TotalSteps = if ($selectedTools -contains 'lerd') { 5 } else { 4 }
 
 $installed = @(& wsl.exe --list --quiet) |
@@ -195,10 +220,9 @@ $setupArgs = @(
 $setupInput = (Get-Content -LiteralPath $SetupScript -Raw).TrimEnd([char[]]"`r`n") + "`n# PowerShell stdin terminator"
 
 # The setup script is streamed over stdin so it does not depend on /mnt/c.
-$setupInput |
-    & wsl.exe --distribution $DistroName --user root -- bash -s -- @setupArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "Setup failed with exit code $LASTEXITCODE. The distribution was left installed for inspection."
+Invoke-WslSetupScript -DistributionName $DistroName -ScriptInput $setupInput -Arguments $setupArgs
+if ($script:SetupExitCode -ne 0) {
+    throw "Setup failed with exit code $script:SetupExitCode. The distribution was left installed for inspection."
 }
 
 Ensure-LinuxUserPassword -DistributionName $DistroName -UserName $LinuxUser
@@ -210,10 +234,9 @@ Invoke-Wsl @('--terminate', $DistroName)
 if ($selectedTools -contains 'lerd') {
     Show-Step 'Finishing Lerd setup after the systemd restart'
     $postRestartArgs = @($setupArgs) + '--post-restart'
-    $setupInput |
-        & wsl.exe --distribution $DistroName --user root -- bash -s -- @postRestartArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Lerd post-restart setup failed with exit code $LASTEXITCODE."
+    Invoke-WslSetupScript -DistributionName $DistroName -ScriptInput $setupInput -Arguments $postRestartArgs
+    if ($script:SetupExitCode -ne 0) {
+        throw "Lerd post-restart setup failed with exit code $script:SetupExitCode."
     }
     Invoke-Wsl @('--terminate', $DistroName)
 }

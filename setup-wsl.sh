@@ -615,10 +615,10 @@ pink='\033[38;2;245;194;231m'
 blue='\033[38;2;137;180;250m'
 dim='\033[2m'
 reset='\033[0m'
-printf '%b\n' "${purple}╭──────────────────────────────────────────╮${reset}"
-printf '%b\n' "${purple}│${reset} ${pink}😈  Ubuntu-Imps agent workshop${reset}             ${purple}│${reset}"
-printf '%b\n' "${purple}│${reset} ${blue}private by default · tools ready · be nice${reset} ${purple}│${reset}"
-printf '%b\n' "${purple}╰──────────────────────────────────────────╯${reset}"
+printf '%b\n' "${purple}╭──────────────────────────────────────────────╮${reset}"
+printf '%b\n' "${purple}│${reset} ${pink}😈  Ubuntu-Imps agent workshop${reset}               ${purple}│${reset}"
+printf '%b\n' "${purple}│${reset} ${blue}private by default · tools ready · be nice${reset}   ${purple}│${reset}"
+printf '%b\n' "${purple}╰──────────────────────────────────────────────╯${reset}"
 printf '%b\n' "${dim}$(id -un)@$(hostname) · $(uname -r)${reset}"
 EOF
   chmod 0755 "$motd"
@@ -868,7 +868,7 @@ EOF
   checkpoint_mark "$git_checkpoint"
 fi
 
-shell_checkpoint="shell-experience-v1-$linux_user"
+shell_checkpoint="shell-experience-v3-$linux_user"
 if checkpoint_done "$shell_checkpoint" &&
    [[ -x "$user_home/.local/bin/oh-my-posh" &&
       -f "$user_home/.config/ohmyposh/imp.omp.json" &&
