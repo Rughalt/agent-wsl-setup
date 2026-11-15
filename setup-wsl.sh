@@ -518,7 +518,11 @@ EOF
     as_user_in "$user_home" sudo "$user_home/.local/bin/lerd" bootstrap --system || status=$?
   fi
   if [[ $status -eq 0 ]]; then
-    as_user_in "$user_home" "$user_home/.local/bin/lerd" install --unattended || status=$?
+    # Lerd still offers some optional prompts even with --unattended when it
+    # detects a controlling terminal. Run it in a new session with closed stdin
+    # so setup can never deadlock on Laravel/Node onboarding questions.
+    as_user_in "$user_home" setsid -f -w \
+      "$user_home/.local/bin/lerd" install --unattended </dev/null || status=$?
   fi
   rm -f -- "$sudoers_file"
   trap - INT TERM
