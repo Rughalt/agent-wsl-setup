@@ -135,6 +135,24 @@ Authentication and onboarding are deliberately never launched by the setup
 script. Run them later in an interactive shell so browser or token prompts
 cannot block the unattended installation.
 
+## Resuming interrupted setup
+
+Completed steps are recorded only after they succeed in
+`/var/lib/agent-wsl-setup/completed`. Re-running setup skips finished base,
+user, hardening, Git, shell-profile, Lerd, and per-tool steps. An interrupted
+step has no checkpoint and is retried. Existing tool binaries from installations
+made before checkpoint support are detected and recorded without reinstalling.
+
+Inspect the saved checkpoints from PowerShell with:
+
+```powershell
+wsl -d Ubuntu-Imps -u root -- ls -1 /var/lib/agent-wsl-setup/completed
+```
+
+To deliberately repeat one step, remove only its corresponding checkpoint as
+root and run setup again. Checkpoint names contain explicit schema versions so
+future installer changes can invalidate only the affected step.
+
 Give the machine user only the repositories and permissions it needs. Require
 pull requests on protected branches and do not allow that account to bypass the
 rules.
@@ -146,7 +164,7 @@ rules.
 | `gh` | Official GitHub APT repository; keyring checksum is verified |
 | `glab` | Latest official GitLab release; release checksum is verified |
 | `gt` | Official Gitea installer, which verifies its downloaded binary |
-| `devin` | Official `cli.devin.ai` installer, run as the unprivileged user with its final interactive `devin setup` step deferred |
+| `devin` | Binary from the official `static.devin.ai` release manifest, with its SHA-256 verified; interactive setup is never launched |
 | `zcode` | Official `zai-org/ZCode` source; Node is downloaded from nodejs.org and checksum-verified, then the CLI is built with the versions pinned by upstream |
 | `node` | NVM from the pinned official installer, followed by the latest Node LTS |
 | `go` | Latest stable archive from go.dev, verified using the official release checksum |

@@ -125,6 +125,37 @@ as_user() {
     "$@"
 }
 
+checkpoint_done() {
+  [[ -f "$state_dir/$1" ]]
+}
+
+checkpoint_mark() {
+  local checkpoint="$1" tmp
+  if [[ ! $checkpoint =~ ^[A-Za-z0-9._-]+$ ]]; then
+    printf 'Unsafe checkpoint name: %s\n' "$checkpoint" >&2
+    return 1
+  fi
+  tmp="$(mktemp "$state_dir/.checkpoint.XXXXXX")"
+  printf 'completed_at=%s\n' "$(date --iso-8601=seconds)" > "$tmp"
+  chmod 0600 "$tmp"
+  mv -f -- "$tmp" "$state_dir/$checkpoint"
+}
+
+tool_is_installed() {
+  local tool="$1"
+  case "$tool" in
+    devin) [[ -x "$user_home/.local/bin/devin" ]] ;;
+    gh|glab) command -v "$tool" >/dev/null 2>&1 ;;
+    go) command -v go >/dev/null 2>&1 ;;
+    gt) [[ -x "$user_home/.local/bin/gt" ]] ;;
+    lerd) [[ -x "$user_home/.local/bin/lerd" ]] ;;
+    node) as_user bash -c '. "$HOME/.nvm/nvm.sh" 2>/dev/null && command -v node >/dev/null' ;;
+    uv) [[ -x "$user_home/.local/bin/uv" ]] ;;
+    zcode) [[ -x "$user_home/.local/bin/zcode" ]] ;;
+    *) return 1 ;;
+  esac
+}
+
 install_node() {
   touch "$user_home/.bashrc"
   chown "$linux_user:$linux_user" "$user_home/.bashrc"
@@ -213,26 +244,62 @@ install_gt() {
 }
 
 install_devin() {
-  local tmpdir installer install_only expected_last_line status
-  tmpdir="$(mktemp -d)"
-  installer="$tmpdir/devin-install.sh"
-  install_only="$tmpdir/devin-install-only.sh"
-  expected_last_line='"$VERSION_DIR/bin/$COMPILED_BIN_NAME" setup'
+  local machine target tmpdir manifest version url checksum archive extract_dir
+  local data_dir versions_dir version_dir current_link target_bin
 
-  curl -fsSL https://cli.devin.ai/install.sh -o "$installer"
-  if [[ $(tail -n 1 "$installer") != "$expected_last_line" ]]; then
-    printf 'The Devin installer changed; refusing to run it because setup/login can no longer be safely deferred.\n' >&2
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64) target=x86_64-unknown-linux ;;
+    aarch64|arm64) target=aarch64-unknown-linux ;;
+    *) printf 'Devin is not supported by this script on architecture %s\n' "$machine" >&2; return 1 ;;
+  esac
+
+  tmpdir="$(mktemp -d)"
+  manifest="$tmpdir/manifest.json"
+  archive="$tmpdir/devin.tar.gz"
+  extract_dir="$tmpdir/extracted"
+  curl -fsSL https://static.devin.ai/cli/current/manifest.json -o "$manifest"
+  version="$(jq -r '.version' "$manifest")"
+  url="$(jq -r --arg target "$target" '.platforms[$target].url' "$manifest")"
+  checksum="$(jq -r --arg target "$target" '.platforms[$target].sha256' "$manifest")"
+
+  if [[ ! $version =~ ^[A-Za-z0-9._-]+$ ||
+        ! $url =~ ^https://static\.devin\.ai/cli/ ||
+        ! $checksum =~ ^[a-fA-F0-9]{64}$ ]]; then
+    printf 'The Devin release manifest contains invalid data; refusing installation.\n' >&2
     rm -rf -- "$tmpdir"
     return 1
   fi
 
-  head -n -1 "$installer" > "$install_only"
-  chown "$linux_user:$linux_user" "$install_only"
-  chmod 0700 "$install_only"
-  status=0
-  as_user bash "$install_only" || status=$?
+  curl -fsSL "$url" -o "$archive"
+  printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status
+  mkdir -p "$extract_dir"
+  tar -xzf "$archive" -C "$extract_dir"
+  if [[ ! -x "$extract_dir/bin/devin" ]]; then
+    printf 'The verified Devin archive does not contain bin/devin.\n' >&2
+    rm -rf -- "$tmpdir"
+    return 1
+  fi
+
+  data_dir="$user_home/.local/share/devin/cli"
+  versions_dir="$data_dir/_versions"
+  version_dir="$versions_dir/$version"
+  current_link="$versions_dir/current"
+  target_bin="$user_home/.local/bin/devin"
+  install -d -o "$linux_user" -g "$linux_user" -m 0700 "$versions_dir" "$user_home/.local/bin"
+  if [[ -e $target_bin && ! -L $target_bin ]]; then
+    printf '%s exists and is not a symlink; refusing to overwrite it.\n' "$target_bin" >&2
+    rm -rf -- "$tmpdir"
+    return 1
+  fi
+
+  rm -rf -- "$version_dir"
+  mv "$extract_dir" "$version_dir"
+  printf 'curl-bash\n' > "$version_dir/distribution"
+  ln -sfn "$version" "$current_link"
+  ln -sfn "$current_link/bin/devin" "$target_bin"
+  chown -R "$linux_user:$linux_user" "$user_home/.local/share/devin" "$user_home/.local/bin"
   rm -rf -- "$tmpdir"
-  return "$status"
 }
 
 install_lerd_postrestart() {
@@ -335,6 +402,9 @@ if ! grep -qiE '(microsoft|wsl)' /proc/sys/kernel/osrelease /proc/version 2>/dev
   exit 1
 fi
 
+state_dir='/var/lib/agent-wsl-setup/completed'
+install -d -o root -g root -m 0700 "$state_dir"
+
 if [[ $post_restart -eq 1 ]]; then
   if ! id "$linux_user" >/dev/null 2>&1; then
     echo "The user $linux_user does not exist; run the baseline phase first." >&2
@@ -342,43 +412,59 @@ if [[ $post_restart -eq 1 ]]; then
   fi
   user_home="$(getent passwd "$linux_user" | cut -d: -f6)"
   if has_tool lerd; then
-    printf '\nCompleting Lerd installation after the systemd restart...\n'
-    install_lerd_postrestart
+    if checkpoint_done 'tool-lerd-v1' && tool_is_installed lerd; then
+      printf '\nSkipping completed Lerd installation.\n'
+    else
+      printf '\nCompleting Lerd installation after the systemd restart...\n'
+      install_lerd_postrestart
+      tool_is_installed lerd
+      checkpoint_mark 'tool-lerd-v1'
+    fi
   fi
   exit 0
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-step 'Updating Ubuntu and installing the base developer toolchain'
-apt-get update
-apt-get upgrade -y
-apt-get install -y --no-install-recommends \
-  bash-completion \
-  build-essential \
-  ca-certificates \
-  curl \
-  git \
-  gnupg \
-  jq \
-  openssh-client \
-  ripgrep \
-  sudo \
-  tar \
-  unzip \
-  wget \
-  xz-utils \
-  zip
-
-if ! id "$linux_user" >/dev/null 2>&1; then
-  step "Creating the locked-down Linux user: $linux_user"
-  adduser --disabled-password --gecos '' --shell /bin/bash "$linux_user"
-  passwd --lock "$linux_user" >/dev/null
+if checkpoint_done 'base-packages-v1'; then
+  step 'Skipping completed base developer toolchain installation'
 else
-  step "Reusing the existing Linux user: $linux_user"
+  step 'Updating Ubuntu and installing the base developer toolchain'
+  apt-get update
+  apt-get upgrade -y
+  apt-get install -y --no-install-recommends \
+    bash-completion \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    gnupg \
+    jq \
+    openssh-client \
+    ripgrep \
+    sudo \
+    tar \
+    unzip \
+    wget \
+    xz-utils \
+    zip
+  checkpoint_mark 'base-packages-v1'
 fi
 
-# The account may use sudo after the owner sets a password explicitly.
-usermod --append --groups sudo "$linux_user"
+user_checkpoint="user-v1-$linux_user"
+if checkpoint_done "$user_checkpoint" && id "$linux_user" >/dev/null 2>&1; then
+  step "Skipping completed Linux user setup: $linux_user"
+else
+  if ! id "$linux_user" >/dev/null 2>&1; then
+    step "Creating the locked-down Linux user: $linux_user"
+    adduser --disabled-password --gecos '' --shell /bin/bash "$linux_user"
+    passwd --lock "$linux_user" >/dev/null
+  else
+    step "Finishing setup for the existing Linux user: $linux_user"
+  fi
+
+  # The account may use sudo after the owner sets a password explicitly.
+  usermod --append --groups sudo "$linux_user"
+fi
 
 user_home="$(getent passwd "$linux_user" | cut -d: -f6)"
 if [[ -z $user_home || $user_home == / ]]; then
@@ -391,9 +477,16 @@ install -d -o "$linux_user" -g "$linux_user" -m 0700 \
   "$user_home/.ssh" \
   "$user_home/work" \
   "$user_home/.config/git/hooks"
+if ! checkpoint_done "$user_checkpoint"; then
+  checkpoint_mark "$user_checkpoint"
+fi
 
-step 'Disabling Windows drive mounts and Windows executable interoperability'
-cat > /etc/wsl.conf <<EOF
+hardening_checkpoint="wsl-hardening-v1-$linux_user"
+if checkpoint_done "$hardening_checkpoint" && [[ -f /etc/wsl.conf && -f "$user_home/.ssh/config" ]]; then
+  step 'Skipping completed WSL and SSH hardening'
+else
+  step 'Disabling Windows drive mounts and Windows executable interoperability'
+  cat > /etc/wsl.conf <<EOF
 [automount]
 enabled=false
 mountFsTab=false
@@ -408,9 +501,9 @@ default=$linux_user
 [boot]
 systemd=true
 EOF
-chmod 0644 /etc/wsl.conf
+  chmod 0644 /etc/wsl.conf
 
-cat > "$user_home/.ssh/config" <<'EOF'
+  cat > "$user_home/.ssh/config" <<'EOF'
 Host *
     AddKeysToAgent no
     ForwardAgent no
@@ -419,11 +512,18 @@ Host *
     IdentitiesOnly yes
     StrictHostKeyChecking accept-new
 EOF
-chown "$linux_user:$linux_user" "$user_home/.ssh/config"
-chmod 0600 "$user_home/.ssh/config"
+  chown "$linux_user:$linux_user" "$user_home/.ssh/config"
+  chmod 0600 "$user_home/.ssh/config"
+  checkpoint_mark "$hardening_checkpoint"
+fi
 
-step 'Configuring Git identity and protected-branch guardrails'
-cat > "$user_home/.config/git/hooks/pre-push" <<'EOF'
+git_config_hash="$(printf '%s\0%s\0%s' "$linux_user" "$git_name" "$git_email" | sha256sum | cut -d' ' -f1)"
+git_checkpoint="git-config-v1-$git_config_hash"
+if checkpoint_done "$git_checkpoint" && [[ -x "$user_home/.config/git/hooks/pre-push" ]]; then
+  step 'Skipping completed Git identity and guardrail configuration'
+else
+  step 'Configuring Git identity and protected-branch guardrails'
+  cat > "$user_home/.config/git/hooks/pre-push" <<'EOF'
 #!/bin/sh
 # Local guardrail only. GitHub branch protection is the authoritative control.
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
@@ -436,20 +536,33 @@ while read -r _local_ref _local_sha remote_ref _remote_sha; do
   esac
 done
 EOF
-chown "$linux_user:$linux_user" "$user_home/.config/git/hooks/pre-push"
-chmod 0700 "$user_home/.config/git/hooks/pre-push"
+  chown "$linux_user:$linux_user" "$user_home/.config/git/hooks/pre-push"
+  chmod 0700 "$user_home/.config/git/hooks/pre-push"
 
-runuser -u "$linux_user" -- git config --global user.name "$git_name"
-runuser -u "$linux_user" -- git config --global user.email "$git_email"
-runuser -u "$linux_user" -- git config --global init.defaultBranch main
-runuser -u "$linux_user" -- git config --global push.default current
-runuser -u "$linux_user" -- git config --global push.autoSetupRemote true
-runuser -u "$linux_user" -- git config --global fetch.prune true
-runuser -u "$linux_user" -- git config --global credential.helper ''
-runuser -u "$linux_user" -- git config --global core.hooksPath "$user_home/.config/git/hooks"
+  runuser -u "$linux_user" -- git config --global user.name "$git_name"
+  runuser -u "$linux_user" -- git config --global user.email "$git_email"
+  runuser -u "$linux_user" -- git config --global init.defaultBranch main
+  runuser -u "$linux_user" -- git config --global push.default current
+  runuser -u "$linux_user" -- git config --global push.autoSetupRemote true
+  runuser -u "$linux_user" -- git config --global fetch.prune true
+  runuser -u "$linux_user" -- git config --global credential.helper ''
+  runuser -u "$linux_user" -- git config --global core.hooksPath "$user_home/.config/git/hooks"
+  checkpoint_mark "$git_checkpoint"
+fi
 
 for tool in "${selected_tools[@]}"; do
   [[ $tool == lerd ]] && continue
+  tool_checkpoint="tool-$tool-v1"
+  if checkpoint_done "$tool_checkpoint" && tool_is_installed "$tool"; then
+    step "Skipping completed optional tool: $tool"
+    continue
+  fi
+  if tool_is_installed "$tool"; then
+    step "Recording already installed optional tool: $tool"
+    checkpoint_mark "$tool_checkpoint"
+    continue
+  fi
+
   step "Installing optional tool: $tool"
   case "$tool" in
     devin) install_devin ;;
@@ -461,15 +574,24 @@ for tool in "${selected_tools[@]}"; do
     uv) install_uv ;;
     zcode) install_zcode ;;
   esac
+  if ! tool_is_installed "$tool"; then
+    printf 'Expected command was not installed: %s\n' "$tool" >&2
+    exit 1
+  fi
+  checkpoint_mark "$tool_checkpoint"
 done
 
-cat > /etc/profile.d/99-ubuntu-imps.sh <<'EOF'
+profile_checkpoint="shell-profile-v1-$linux_user"
+if ! checkpoint_done "$profile_checkpoint" || [[ ! -f /etc/profile.d/99-ubuntu-imps.sh ]]; then
+  cat > /etc/profile.d/99-ubuntu-imps.sh <<'EOF'
 # Private-by-default files for interactive shells.
 umask 077
 export HISTCONTROL=ignoreboth:erasedups
 export PATH="$HOME/.local/bin:$HOME/go/bin:$HOME/.config/composer/vendor/bin:/usr/local/go/bin:$PATH"
 EOF
-chmod 0644 /etc/profile.d/99-ubuntu-imps.sh
+  chmod 0644 /etc/profile.d/99-ubuntu-imps.sh
+  checkpoint_mark "$profile_checkpoint"
+fi
 
 chmod 0700 "$user_home"
 chown -R "$linux_user:$linux_user" "$user_home"
@@ -477,20 +599,8 @@ apt-get clean
 
 step 'Final verification'
 for tool in "${selected_tools[@]}"; do
-  case "$tool" in
-    devin) command_path="$user_home/.local/bin/devin" ;;
-    go) command_path="$(command -v go || true)" ;;
-    lerd) continue ;;
-    node)
-      as_user bash -c '. "$HOME/.nvm/nvm.sh" && command -v node >/dev/null'
-      continue
-      ;;
-    uv) command_path="$user_home/.local/bin/uv" ;;
-    zcode) command_path="$user_home/.local/bin/zcode" ;;
-    gt) command_path="$user_home/.local/bin/gt" ;;
-    gh|glab) command_path="$(command -v "$tool" || true)" ;;
-  esac
-  if [[ ! -x $command_path ]]; then
+  [[ $tool == lerd ]] && continue
+  if ! tool_is_installed "$tool"; then
     printf 'Expected command was not installed: %s\n' "$tool" >&2
     exit 1
   fi
