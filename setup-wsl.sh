@@ -125,6 +125,12 @@ as_user() {
     "$@"
 }
 
+as_user_in() {
+  local directory="$1"
+  shift
+  as_user sh -c 'cd "$1" && shift && exec "$@"' sh "$directory" "$@"
+}
+
 checkpoint_done() {
   [[ -f "$state_dir/$1" ]]
 }
@@ -468,14 +474,14 @@ install_zcode() {
   chown -R "$linux_user:$linux_user" "$toolchain" "$source_dir"
   rm -rf -- "$tmpdir"
 
-  as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
+  as_user_in "$source_dir" env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
     "$toolchain/bin/corepack" enable --install-directory "$toolchain/bin"
-  as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
+  as_user_in "$source_dir" env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
     "$toolchain/bin/corepack" prepare "pnpm@$pnpm_version" --activate
-  as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
-    "$toolchain/bin/pnpm" --dir "$source_dir" install --frozen-lockfile
-  as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
-    "$toolchain/bin/pnpm" --dir "$source_dir" --filter '@zcode/cli...' build
+  as_user_in "$source_dir" env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
+    "$toolchain/bin/pnpm" install --frozen-lockfile
+  as_user_in "$source_dir" env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
+    "$toolchain/bin/pnpm" --filter '@zcode/cli...' build
 
   cat > "$user_home/.local/bin/zcode" <<EOF
 #!/bin/sh
