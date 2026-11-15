@@ -108,7 +108,7 @@ tool_step_count=0
 for tool in "${selected_tools[@]}"; do
   [[ $tool == lerd ]] || tool_step_count=$((tool_step_count + 1))
 done
-step_total=$((5 + tool_step_count))
+step_total=$((6 + tool_step_count))
 step() {
   step_current=$((step_current + 1))
   printf '\n%s[%d/%d] %s%s\n' "$c_cyan" "$step_current" "$step_total" "$1" "$c_reset"
@@ -430,10 +430,121 @@ install_lerd_postrestart() {
   rm -f -- "$sudoers_tmp"
 
   status=0
-  as_user bash -c 'curl -fsSL https://lerd.sh/install.sh | bash' || status=$?
+  # Detach the vendor installer from the controlling terminal so its initial
+  # install cannot open an interactive UI. Then explicitly apply the supported
+  # unattended setup mode while the narrowly scoped bootstrap sudo rule exists.
+  as_user setsid -f -w bash -c 'curl -fsSL https://lerd.sh/install.sh | bash' </dev/null || status=$?
+  if [[ $status -eq 0 ]]; then
+    as_user "$user_home/.local/bin/lerd" install --unattended || status=$?
+  fi
   rm -f -- "$sudoers_file"
   [[ $status -eq 0 ]] || return "$status"
   as_user "$user_home/.local/bin/lerd" doctor
+}
+
+install_shell_experience() {
+  local theme_dir theme_file bashrc motd
+  theme_dir="$user_home/.config/ohmyposh"
+  theme_file="$theme_dir/imp.omp.json"
+  bashrc="$user_home/.bashrc"
+  motd='/usr/local/bin/ubuntu-imps-motd'
+
+  install -d -o "$linux_user" -g "$linux_user" -m 0700 \
+    "$theme_dir" "$user_home/.local/bin"
+  as_user sh -c 'curl -fsSL https://ohmyposh.dev/install.sh | bash -s -- -d "$HOME/.local/bin"'
+
+  cat > "$theme_file" <<'EOF'
+{
+  "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
+  "version": 4,
+  "final_space": true,
+  "blocks": [
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "segments": [
+        {
+          "type": "text",
+          "style": "plain",
+          "foreground": "#CBA6F7",
+          "template": "╭─ 😈 imp "
+        },
+        {
+          "type": "session",
+          "style": "plain",
+          "foreground": "#F5C2E7",
+          "template": "{{ .UserName }}@{{ .HostName }} "
+        },
+        {
+          "type": "path",
+          "style": "plain",
+          "foreground": "#89B4FA",
+          "options": { "style": "folder" },
+          "template": "{{ .Path }} "
+        },
+        {
+          "type": "git",
+          "style": "plain",
+          "foreground": "#A6E3A1",
+          "template": "{{ .HEAD }}{{ if .Working.Changed }}*{{ end }} "
+        }
+      ]
+    },
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "newline": true,
+      "segments": [
+        {
+          "type": "text",
+          "style": "plain",
+          "foreground": "#CBA6F7",
+          "template": "╰─❯ "
+        }
+      ]
+    }
+  ]
+}
+EOF
+  chown "$linux_user:$linux_user" "$theme_file"
+  chmod 0600 "$theme_file"
+
+  cat > "$motd" <<'EOF'
+#!/bin/sh
+purple='\033[38;2;203;166;247m'
+pink='\033[38;2;245;194;231m'
+blue='\033[38;2;137;180;250m'
+dim='\033[2m'
+reset='\033[0m'
+printf '%b\n' "${purple}╭──────────────────────────────────────────╮${reset}"
+printf '%b\n' "${purple}│${reset} ${pink}😈  Ubuntu-Imps agent workshop${reset}             ${purple}│${reset}"
+printf '%b\n' "${purple}│${reset} ${blue}private by default · tools ready · be nice${reset} ${purple}│${reset}"
+printf '%b\n' "${purple}╰──────────────────────────────────────────╯${reset}"
+printf '%b\n' "${dim}$(id -un)@$(hostname) · $(uname -r)${reset}"
+EOF
+  chmod 0755 "$motd"
+
+  touch "$bashrc"
+  if ! grep -qF '# >>> Ubuntu-Imps shell >>>' "$bashrc"; then
+    cat >> "$bashrc" <<'EOF'
+
+# >>> Ubuntu-Imps shell >>>
+if [[ $- == *i* ]]; then
+  if [[ -z ${UBUNTU_IMPS_MOTD_SHOWN:-} ]]; then
+    export UBUNTU_IMPS_MOTD_SHOWN=1
+    /usr/local/bin/ubuntu-imps-motd
+  fi
+  if [[ -x $HOME/.local/bin/oh-my-posh ]]; then
+    eval "$("$HOME/.local/bin/oh-my-posh" init bash --config "$HOME/.config/ohmyposh/imp.omp.json")"
+  fi
+fi
+# <<< Ubuntu-Imps shell <<<
+EOF
+  fi
+  chown "$linux_user:$linux_user" "$bashrc"
+  chmod 0644 "$bashrc"
+
+  as_user "$user_home/.local/bin/oh-my-posh" print primary --config "$theme_file" >/dev/null
 }
 
 install_zcode() {
@@ -658,6 +769,18 @@ EOF
   checkpoint_mark "$git_checkpoint"
 fi
 
+shell_checkpoint="shell-experience-v1-$linux_user"
+if checkpoint_done "$shell_checkpoint" &&
+   [[ -x "$user_home/.local/bin/oh-my-posh" &&
+      -f "$user_home/.config/ohmyposh/imp.omp.json" &&
+      -x /usr/local/bin/ubuntu-imps-motd ]]; then
+  step 'Skipping completed Ubuntu-Imps shell experience'
+else
+  step 'Installing the Ubuntu-Imps MOTD and Oh My Posh theme'
+  install_shell_experience
+  checkpoint_mark "$shell_checkpoint"
+fi
+
 for tool in "${selected_tools[@]}"; do
   [[ $tool == lerd || $tool == shiori ]] && continue
   tool_checkpoint="tool-$tool-v1"
@@ -743,7 +866,7 @@ After Windows restarts this distribution:
   * Direct pushes to main/master will be blocked by a local Git hook.
 
 No GitHub or agent credentials were created or copied.
-The sudo password remains locked until you set it explicitly from Windows.
+The Windows wrapper will securely prompt for the sudo password if it is still locked.
 Authenticate interactively as $linux_user only after reviewing access scopes.
 Enforce pull requests and branch protection on GitHub; local hooks are bypassable.
 WSL is not a strong sandbox or a substitute for a separate VM.

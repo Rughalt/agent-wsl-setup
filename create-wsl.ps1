@@ -62,6 +62,30 @@ function Remove-ManagedInstallLocation {
     }
 }
 
+function Ensure-LinuxUserPassword {
+    param(
+        [Parameter(Mandatory)][string]$DistributionName,
+        [Parameter(Mandatory)][string]$UserName
+    )
+
+    $passwordStatus = ((& wsl.exe --distribution $DistributionName --user root -- passwd --status $UserName 2>&1 | Out-String) -replace "`0", '').Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not inspect the password state for '$UserName'."
+    }
+    $statusFields = @($passwordStatus -split '\s+')
+    if ($statusFields.Count -ge 2 -and $statusFields[1] -eq 'L') {
+        Write-Host ''
+        Write-Host "Set the sudo password for Linux user '$UserName'. Input is hidden and the password is never stored by this installer." -ForegroundColor Magenta
+        & wsl.exe --distribution $DistributionName --user root -- passwd $UserName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Password setup for '$UserName' was cancelled or failed."
+        }
+    }
+    else {
+        Write-Host "Linux user '$UserName' already has a password; leaving it unchanged." -ForegroundColor DarkGray
+    }
+}
+
 if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
     throw 'WSL is not installed. Install the current Microsoft Store version of WSL first.'
 }
@@ -176,6 +200,8 @@ $setupInput |
 if ($LASTEXITCODE -ne 0) {
     throw "Setup failed with exit code $LASTEXITCODE. The distribution was left installed for inspection."
 }
+
+Ensure-LinuxUserPassword -DistributionName $DistroName -UserName $LinuxUser
 
 # Restart only this distribution so /etc/wsl.conf takes effect.
 Show-Step 'Restarting the distribution to apply wsl.conf'

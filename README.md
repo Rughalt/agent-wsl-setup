@@ -12,6 +12,7 @@ credentials, Git configuration, or files from an existing Ubuntu installation.
 - Keeps Git, SSH, and CLI credentials separate from the Windows user and other
   WSL distributions.
 - Adds a local guardrail against direct pushes to `main` and `master`.
+- Adds an Ubuntu-Imps login banner and a local purple/pink Oh My Posh theme.
 - Optionally installs Node through NVM, Go, `uv`, Lerd, GitHub CLI (`gh`),
   GitLab CLI (`glab`), Gitea CLI (`gt`), Devin CLI, ZCode CLI, FigCraft CLI,
   and the shared Shiori Brain skills.
@@ -103,8 +104,10 @@ You can also select the user explicitly:
 wsl -d Ubuntu-Imps -u imps
 ```
 
-The account belongs to the `sudo` group, but its password starts locked so the
-setup never generates or stores a credential. Set it once from PowerShell:
+The account belongs to the `sudo` group. After the Linux setup succeeds, the
+installer runs the native `passwd` prompt for `imps`; input is hidden and the
+password is never passed as an argument, logged, generated, or stored by these
+scripts. If that prompt was cancelled, set it later from PowerShell:
 
 ```powershell
 wsl -d Ubuntu-Imps -u root -- passwd imps
@@ -179,9 +182,15 @@ publish a standalone Linux CLI artifact. The similarly named third-party npm
 packages are intentionally not used.
 
 Lerd needs systemd and rootless Podman. The setup enables systemd, restarts the
-distribution, installs Lerd in the second phase, and grants only the temporary
-bootstrap permission needed by its official installer. Day-to-day Lerd usage
+distribution, installs Lerd in a detached non-interactive session, and then
+explicitly runs `lerd install --unattended`. It grants only the temporary
+bootstrap permission needed by the official installer. Day-to-day Lerd usage
 runs as `imps` without sudo.
+
+Oh My Posh is installed from its official Linux installer into
+`~/.local/bin`. The custom theme is stored locally at
+`~/.config/ohmyposh/imp.omp.json`, so starting a shell does not download a
+remote theme. For full icon coverage, configure a Nerd Font in Windows Terminal.
 
 Shiori Brain is installed after every selected CLI. It uses the repository's
 official doctor in `opencode` compatibility mode, which installs the shared
