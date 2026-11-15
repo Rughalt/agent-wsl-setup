@@ -324,7 +324,7 @@ install_devin() {
 }
 
 install_figcraft() {
-  local machine arch tmpdir release_json tag version asset base_url checksums archive checksum_line
+  local machine arch tmpdir version asset base_url checksums archive checksum checksum_count
   local extract_dir relative_binary install_root target_bin
 
   machine="$(uname -m)"
@@ -335,30 +335,41 @@ install_figcraft() {
   esac
 
   tmpdir="$(mktemp -d)"
-  release_json="$tmpdir/release.json"
   checksums="$tmpdir/SHA256SUMS.txt"
-  curl -fsSL https://api.github.com/repos/storytold/figcraft/releases/latest -o "$release_json"
-  tag="$(jq -r '.tag_name' "$release_json")"
-  if [[ ! $tag =~ ^v[0-9][A-Za-z0-9._-]*$ ]]; then
-    printf 'The latest FigCraft release has an invalid tag: %s\n' "$tag" >&2
+  base_url='https://github.com/storytold/figcraft/releases/latest/download'
+  curl -fsSL "$base_url/SHA256SUMS.txt" -o "$checksums"
+  asset="$(awk -v arch="$arch" '
+    {
+      name=$2
+      sub(/^\*/, "", name)
+      if (name ~ /^figcraft-[0-9]/ && name ~ ("-linux-" arch "\\.tar\\.gz$")) print name
+    }
+  ' "$checksums")"
+  if [[ -z $asset || $(printf '%s\n' "$asset" | wc -l) -ne 1 ]]; then
+    printf 'Could not identify exactly one FigCraft CLI archive for %s.\n' "$arch" >&2
     rm -rf -- "$tmpdir"
     return 1
   fi
 
-  version="${tag#v}"
-  asset="figcraft-${version}-linux-${arch}.tar.gz"
-  base_url="https://github.com/storytold/figcraft/releases/download/$tag"
+  version="${asset#figcraft-}"
+  version="${version%-linux-${arch}.tar.gz}"
+  if [[ ! $version =~ ^[0-9][A-Za-z0-9._-]*$ ]]; then
+    printf 'The latest FigCraft archive has an invalid version: %s\n' "$version" >&2
+    rm -rf -- "$tmpdir"
+    return 1
+  fi
+
   archive="$tmpdir/$asset"
   extract_dir="$tmpdir/extracted"
-  curl -fsSL "$base_url/SHA256SUMS.txt" -o "$checksums"
   curl -fsSL "$base_url/$asset" -o "$archive"
-  checksum_line="$(grep -E "^[a-fA-F0-9]{64} [ *]${asset}$" "$checksums" || true)"
-  if [[ -z $checksum_line || $(printf '%s\n' "$checksum_line" | wc -l) -ne 1 ]]; then
+  checksum="$(awk -v asset="$asset" '{ name=$2; sub(/^\*/, "", name); if (name == asset) print $1 }' "$checksums")"
+  checksum_count="$(printf '%s\n' "$checksum" | wc -l)"
+  if [[ ! $checksum =~ ^[a-fA-F0-9]{64}$ || $checksum_count -ne 1 ]]; then
     printf 'Could not find one trusted checksum for %s.\n' "$asset" >&2
     rm -rf -- "$tmpdir"
     return 1
   fi
-  (cd "$tmpdir" && printf '%s\n' "$checksum_line" | sha256sum --check --status)
+  (cd "$tmpdir" && printf '%s  %s\n' "$checksum" "$asset" | sha256sum --check --status)
 
   mkdir -p "$extract_dir"
   tar -xzf "$archive" -C "$extract_dir"
