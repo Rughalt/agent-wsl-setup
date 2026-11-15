@@ -24,14 +24,14 @@ Set-StrictMode -Version Latest
 # `irm ... | iex` cannot pass script parameters. Allow the concise README
 # one-liner to provide the optional tool list through a separate variable.
 if ($Tools.Count -eq 0) {
-    $oneLineTools = Get-Variable -Name AgentWslTools -ValueOnly -ErrorAction SilentlyContinue
+    $oneLineTools = Get-Variable -Name AgentWslTools -Scope Global -ValueOnly -ErrorAction SilentlyContinue
     if ($oneLineTools) {
         $Tools = @($oneLineTools -split '\s*,\s*' | Where-Object { $_ })
     }
 }
 
 if (-not $SetupOnly) {
-    $oneLineSetupOnly = Get-Variable -Name AgentWslSetupOnly -ValueOnly -ErrorAction SilentlyContinue
+    $oneLineSetupOnly = Get-Variable -Name AgentWslSetupOnly -Scope Global -ValueOnly -ErrorAction SilentlyContinue
     if ($oneLineSetupOnly -eq $true) {
         $SetupOnly = $true
     }
