@@ -44,6 +44,7 @@ if ($invalidTools.Count -gt 0) {
 }
 
 $rawBase = 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main'
+$cacheBust = [Guid]::NewGuid().ToString('N')
 $downloadRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-wsl-setup-{0}" -f [Guid]::NewGuid().ToString('N'))
 $createPath = Join-Path $downloadRoot 'create-wsl.ps1'
 $setupPath = Join-Path $downloadRoot 'setup-wsl.sh'
@@ -52,8 +53,8 @@ Write-Host 'Downloading the current Ubuntu-Imps installer from GitHub...' -Foreg
 New-Item -ItemType Directory -Path $downloadRoot | Out-Null
 
 try {
-    Invoke-WebRequest -UseBasicParsing -Uri "$rawBase/create-wsl.ps1" -OutFile $createPath
-    Invoke-WebRequest -UseBasicParsing -Uri "$rawBase/setup-wsl.sh" -OutFile $setupPath
+    Invoke-WebRequest -UseBasicParsing -Uri "$rawBase/create-wsl.ps1?cache=$cacheBust" -OutFile $createPath
+    Invoke-WebRequest -UseBasicParsing -Uri "$rawBase/setup-wsl.sh?cache=$cacheBust" -OutFile $setupPath
 
     $createScript = [ScriptBlock]::Create((Get-Content -LiteralPath $createPath -Raw))
     $arguments = @{
