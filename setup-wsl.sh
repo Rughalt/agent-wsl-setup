@@ -402,6 +402,57 @@ install_shiori() {
   as_user sh -c 'curl -fsSL https://raw.githubusercontent.com/Dragonshorn-Studios/shiori-brain/main/scripts/shiori-doctor.sh | sh -s -- --install opencode'
 }
 
+configure_lerd_podman_backend() {
+  local backend config_dir config_file custom_networks
+
+  backend="$(as_user_in "$user_home" podman info --format '{{.Host.NetworkBackend}}')"
+  if [[ $backend == netavark ]]; then
+    return 0
+  fi
+  if [[ $backend != cni ]]; then
+    printf 'Unsupported Podman network backend: %s\n' "$backend" >&2
+    return 1
+  fi
+
+  # Switching backends hides CNI network definitions from Netavark. Do it
+  # automatically only while the dedicated agent distro still has no
+  # containers and no user-created networks; never destroy Podman state.
+  if [[ -n $(as_user_in "$user_home" podman ps -aq) ]]; then
+    cat >&2 <<'EOF'
+Lerd requires Podman's Netavark backend, but this user already has containers.
+No Podman state was changed. Remove or migrate those containers, then re-run setup.
+EOF
+    return 1
+  fi
+  custom_networks="$(
+    as_user_in "$user_home" podman network ls --format '{{.Name}}' |
+      sed '/^podman$/d; /^[[:space:]]*$/d'
+  )"
+  if [[ -n $custom_networks ]]; then
+    printf 'Lerd requires Netavark, but these CNI networks already exist:\n%s\n' \
+      "$custom_networks" >&2
+    echo 'No Podman state was changed. Remove or migrate them, then re-run setup.' >&2
+    return 1
+  fi
+
+  config_dir='/etc/containers/containers.conf.d'
+  config_file="$config_dir/90-agent-wsl-netavark.conf"
+  install -d -o root -g root -m 0755 "$config_dir"
+  cat > "$config_file" <<'EOF'
+[network]
+network_backend = "netavark"
+EOF
+  chmod 0644 "$config_file"
+
+  backend="$(as_user_in "$user_home" podman info --format '{{.Host.NetworkBackend}}')"
+  if [[ $backend != netavark ]]; then
+    printf 'Unable to switch Podman from CNI to Netavark (still reports %s).\n' \
+      "$backend" >&2
+    return 1
+  fi
+  echo 'Podman network backend migrated safely: CNI -> Netavark.'
+}
+
 install_lerd_postrestart() {
   local user_id sudoers_file sudoers_tmp status
   user_id="$(id -u "$linux_user")"
@@ -412,10 +463,14 @@ install_lerd_postrestart() {
     dnsmasq-base \
     fuse-overlayfs \
     libnss3-tools \
+    aardvark-dns \
+    netavark \
     podman \
     slirp4netns \
     systemd-resolved \
     uidmap
+
+  configure_lerd_podman_backend
 
   loginctl enable-linger "$linux_user"
   systemctl start "user@${user_id}.service"
