@@ -73,6 +73,19 @@ $installed = @(& wsl.exe --list --quiet) |
     Where-Object { $_ }
 $exists = $installed -contains $DistroName
 
+if ($exists -and -not $SetupOnly) {
+    Write-Host ''
+    Write-Warning "Distribution '$DistroName' already exists."
+    $answer = Read-Host 'Re-run setup and hardening on the existing distribution? [Y/n]'
+    if ([string]::IsNullOrWhiteSpace($answer) -or $answer -match '^(?i:y|yes|t|tak)$') {
+        $SetupOnly = $true
+    }
+    else {
+        Write-Host 'Cancelled. The existing distribution was not changed.' -ForegroundColor Yellow
+        return
+    }
+}
+
 if ($SetupOnly) {
     if (-not $exists) {
         throw "Distribution '$DistroName' is not installed."
@@ -80,10 +93,6 @@ if ($SetupOnly) {
     Show-Step "Using the existing $DistroName distribution"
 }
 else {
-    if ($exists) {
-        throw "Distribution '$DistroName' already exists. Use -SetupOnly to re-run hardening."
-    }
-
     $wslHelp = ((& wsl.exe --help 2>&1 | Out-String) -replace "`0", '')
     if ($wslHelp -notmatch '--name' -or $wslHelp -notmatch '--location') {
         throw 'This script needs a current Store version of WSL. Run: wsl --update'

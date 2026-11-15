@@ -74,6 +74,9 @@ The same operation through the one-line installer:
 $AgentWslSetupOnly = $true; $AgentWslTools = 'node,go,uv,gh,glab,gt'; irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1' | iex
 ```
 
+If the distribution already exists and `SetupOnly` was not supplied, the
+installer asks whether it should re-run setup and hardening instead of failing.
+
 Useful customization:
 
 ```powershell
