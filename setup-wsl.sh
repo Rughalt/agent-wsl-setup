@@ -433,13 +433,13 @@ install_lerd_postrestart() {
   # Detach the vendor installer from the controlling terminal so its initial
   # install cannot open an interactive UI. Then explicitly apply the supported
   # unattended setup mode while the narrowly scoped bootstrap sudo rule exists.
-  as_user setsid -f -w bash -c 'curl -fsSL https://lerd.sh/install.sh | bash' </dev/null || status=$?
+  as_user_in "$user_home" setsid -f -w bash -c 'curl -fsSL https://lerd.sh/install.sh | bash' </dev/null || status=$?
   if [[ $status -eq 0 ]]; then
-    as_user "$user_home/.local/bin/lerd" install --unattended || status=$?
+    as_user_in "$user_home" "$user_home/.local/bin/lerd" install --unattended || status=$?
   fi
   rm -f -- "$sudoers_file"
   [[ $status -eq 0 ]] || return "$status"
-  as_user "$user_home/.local/bin/lerd" doctor
+  as_user_in "$user_home" "$user_home/.local/bin/lerd" doctor
 }
 
 install_shell_experience() {
