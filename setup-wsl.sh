@@ -150,7 +150,7 @@ tool_is_installed() {
     gt) [[ -x "$user_home/.local/bin/gt" ]] ;;
     lerd) [[ -x "$user_home/.local/bin/lerd" ]] ;;
     node) as_user bash -c '. "$HOME/.nvm/nvm.sh" 2>/dev/null && command -v node >/dev/null' ;;
-    uv) [[ -x "$user_home/.local/bin/uv" ]] ;;
+    uv) [[ -x "$user_home/.local/bin/uv" && -f "$user_home/.config/uv/uv-receipt.json" ]] ;;
     zcode) [[ -x "$user_home/.local/bin/zcode" ]] ;;
     *) return 1 ;;
   esac
@@ -477,6 +477,9 @@ install -d -o "$linux_user" -g "$linux_user" -m 0700 \
   "$user_home/.ssh" \
   "$user_home/work" \
   "$user_home/.config/git/hooks"
+# A previously interrupted run may have left parent directories owned by root.
+# Repair the dedicated account's home before any installer runs as that user.
+chown -R "$linux_user:$linux_user" "$user_home"
 if ! checkpoint_done "$user_checkpoint"; then
   checkpoint_mark "$user_checkpoint"
 fi
