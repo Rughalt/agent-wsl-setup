@@ -68,6 +68,12 @@ Add or repair tools later without recreating the distribution:
 .\create-wsl.ps1 -SetupOnly -Tools node,go,uv,gh,glab,gt
 ```
 
+The same operation through the one-line installer:
+
+```powershell
+$AgentWslSetupOnly = $true; $AgentWslTools = 'node,go,uv,gh,glab,gt'; irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1' | iex
+```
+
 Useful customization:
 
 ```powershell

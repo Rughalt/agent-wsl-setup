@@ -30,6 +30,13 @@ if ($Tools.Count -eq 0) {
     }
 }
 
+if (-not $SetupOnly) {
+    $oneLineSetupOnly = Get-Variable -Name AgentWslSetupOnly -ValueOnly -ErrorAction SilentlyContinue
+    if ($oneLineSetupOnly -eq $true) {
+        $SetupOnly = $true
+    }
+}
+
 $allowedTools = @('all', 'devin', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode')
 $invalidTools = @($Tools | Where-Object { $_ -notin $allowedTools })
 if ($invalidTools.Count -gt 0) {
