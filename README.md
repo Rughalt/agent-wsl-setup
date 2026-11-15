@@ -21,6 +21,27 @@ the Git hosting service; local Git hooks can be bypassed.
 
 ## Quick start
 
+### One-line installer
+
+Run the current version directly from this repository in PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1'))) -Tools all
+```
+
+Install only selected tools:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1'))) -Tools node,go,uv,lerd,gh,gt
+```
+
+The bootstrap downloads `create-wsl.ps1` and `setup-wsl.sh` from this repository
+to a unique temporary directory, invokes them with the supplied options, and
+removes the downloaded copies afterwards. Review `install.ps1` before running
+the one-liner if you do not want to execute the current `main` branch directly.
+
+### Downloaded scripts
+
 Download `create-wsl.ps1` and `setup-wsl.sh` into the same directory, then run
 PowerShell:
 
