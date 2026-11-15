@@ -8,6 +8,9 @@ param(
 
     [string]$Distribution = 'Ubuntu-24.04',
 
+    [ValidatePattern('^(main|[0-9a-fA-F]{7,40})$')]
+    [string]$SourceRef = 'main',
+
     [string]$GitName = 'Ubuntu Imp',
 
     [string]$GitEmail = 'ubuntu-imps@localhost',
@@ -46,19 +49,27 @@ if (-not $ResetDistro) {
     }
 }
 
+$oneLineSourceRef = Get-Variable -Name AgentWslSourceRef -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+if ($oneLineSourceRef) {
+    $SourceRef = [string]$oneLineSourceRef
+}
+if ($SourceRef -notmatch '^(main|[0-9a-fA-F]{7,40})$') {
+    throw 'SourceRef must be "main" or a 7-40 character hexadecimal commit SHA.'
+}
+
 $allowedTools = @('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')
 $invalidTools = @($Tools | Where-Object { $_ -notin $allowedTools })
 if ($invalidTools.Count -gt 0) {
     throw "Unknown tool(s): $($invalidTools -join ', '). Allowed values: $($allowedTools -join ', ')."
 }
 
-$rawBase = 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main'
+$rawBase = "https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/$SourceRef"
 $cacheBust = [Guid]::NewGuid().ToString('N')
 $downloadRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-wsl-setup-{0}" -f [Guid]::NewGuid().ToString('N'))
 $createPath = Join-Path $downloadRoot 'create-wsl.ps1'
 $setupPath = Join-Path $downloadRoot 'setup-wsl.sh'
 
-Write-Host 'Downloading the current Ubuntu-Imps installer from GitHub...' -ForegroundColor Cyan
+Write-Host "Downloading the Ubuntu-Imps installer from GitHub ref: $SourceRef" -ForegroundColor Cyan
 New-Item -ItemType Directory -Path $downloadRoot | Out-Null
 
 try {

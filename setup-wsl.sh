@@ -337,7 +337,8 @@ install_figcraft() {
   tmpdir="$(mktemp -d)"
   checksums="$tmpdir/SHA256SUMS.txt"
   base_url='https://github.com/storytold/figcraft/releases/latest/download'
-  curl -fsSL "$base_url/SHA256SUMS.txt" -o "$checksums"
+  curl -fsSL --retry 4 --retry-delay 2 --retry-all-errors \
+    -A 'agent-wsl-setup/1.0' "$base_url/SHA256SUMS.txt" -o "$checksums"
   asset="$(awk -v arch="$arch" '
     {
       name=$2
@@ -361,7 +362,8 @@ install_figcraft() {
 
   archive="$tmpdir/$asset"
   extract_dir="$tmpdir/extracted"
-  curl -fsSL "$base_url/$asset" -o "$archive"
+  curl -fsSL --retry 4 --retry-delay 2 --retry-all-errors \
+    -A 'agent-wsl-setup/1.0' "$base_url/$asset" -o "$archive"
   checksum="$(awk -v asset="$asset" '{ name=$2; sub(/^\*/, "", name); if (name == asset) print $1 }' "$checksums")"
   checksum_count="$(printf '%s\n' "$checksum" | wc -l)"
   if [[ ! $checksum =~ ^[a-fA-F0-9]{64}$ || $checksum_count -ne 1 ]]; then
