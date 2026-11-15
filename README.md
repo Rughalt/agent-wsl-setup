@@ -128,7 +128,12 @@ ssh-keygen -t ed25519 -a 100 -C "YOUR-MACHINE-USER@users.noreply.github.com"
 gh auth login --git-protocol ssh
 gt auth login
 glab auth login
+devin setup
 ```
+
+Authentication and onboarding are deliberately never launched by the setup
+script. Run them later in an interactive shell so browser or token prompts
+cannot block the unattended installation.
 
 Give the machine user only the repositories and permissions it needs. Require
 pull requests on protected branches and do not allow that account to bypass the
@@ -141,7 +146,7 @@ rules.
 | `gh` | Official GitHub APT repository; keyring checksum is verified |
 | `glab` | Latest official GitLab release; release checksum is verified |
 | `gt` | Official Gitea installer, which verifies its downloaded binary |
-| `devin` | Official `cli.devin.ai` installer, run as the unprivileged user |
+| `devin` | Official `cli.devin.ai` installer, run as the unprivileged user with its final interactive `devin setup` step deferred |
 | `zcode` | Official `zai-org/ZCode` source; Node is downloaded from nodejs.org and checksum-verified, then the CLI is built with the versions pinned by upstream |
 | `node` | NVM from the pinned official installer, followed by the latest Node LTS |
 | `go` | Latest stable archive from go.dev, verified using the official release checksum |

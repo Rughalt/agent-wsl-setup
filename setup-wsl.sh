@@ -213,7 +213,26 @@ install_gt() {
 }
 
 install_devin() {
-  as_user sh -c 'curl -fsSL https://cli.devin.ai/install.sh | bash'
+  local tmpdir installer install_only expected_last_line status
+  tmpdir="$(mktemp -d)"
+  installer="$tmpdir/devin-install.sh"
+  install_only="$tmpdir/devin-install-only.sh"
+  expected_last_line='"$VERSION_DIR/bin/$COMPILED_BIN_NAME" setup'
+
+  curl -fsSL https://cli.devin.ai/install.sh -o "$installer"
+  if [[ $(tail -n 1 "$installer") != "$expected_last_line" ]]; then
+    printf 'The Devin installer changed; refusing to run it because setup/login can no longer be safely deferred.\n' >&2
+    rm -rf -- "$tmpdir"
+    return 1
+  fi
+
+  head -n -1 "$installer" > "$install_only"
+  chown "$linux_user:$linux_user" "$install_only"
+  chmod 0700 "$install_only"
+  status=0
+  as_user bash "$install_only" || status=$?
+  rm -rf -- "$tmpdir"
+  return "$status"
 }
 
 install_lerd_postrestart() {
@@ -493,3 +512,7 @@ Authenticate interactively as $linux_user only after reviewing access scopes.
 Enforce pull requests and branch protection on GitHub; local hooks are bypassable.
 WSL is not a strong sandbox or a substitute for a separate VM.
 EOF
+
+if has_tool devin; then
+  printf '\nDevin was installed without starting onboarding. Log in later as %s with:\n  devin setup\n' "$linux_user"
+fi
