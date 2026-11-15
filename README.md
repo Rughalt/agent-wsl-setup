@@ -13,7 +13,7 @@ credentials, Git configuration, or files from an existing Ubuntu installation.
   WSL distributions.
 - Adds a local guardrail against direct pushes to `main` and `master`.
 - Adds an Ubuntu-Imps login banner and a local purple/pink Oh My Posh theme.
-- Optionally installs Node through NVM, Go, `uv`, Lerd, GitHub CLI (`gh`),
+- Optionally installs Node through NVM, Playwright with Chromium, Go, `uv`, Lerd, GitHub CLI (`gh`),
   GitLab CLI (`glab`), Gitea CLI (`gt`), Devin CLI, ZCode CLI, FigCraft CLI,
   and the shared Shiori Brain skills.
 
@@ -49,7 +49,7 @@ PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\create-wsl.ps1 -Tools node,go,uv,lerd,gh,gt,devin
+.\create-wsl.ps1 -Tools node,playwright,go,uv,lerd,gh,gt,devin
 ```
 
 Install every optional CLI (the ZCode source build can take a while):
@@ -179,6 +179,7 @@ rules.
 | `figcraft` | Latest official `storytold/figcraft` Linux release for the current architecture; `SHA256SUMS.txt` is verified and `figcraft-cli` includes the MCP server |
 | `shiori` | Runs the official `Dragonshorn-Studios/shiori-brain` doctor last, creating a managed checkout and linking generated skills into `~/.agents/skills` |
 | `node` | NVM from the pinned official installer, followed by the latest Node LTS |
+| `playwright` | Latest Playwright CLI, Linux browser dependencies, and its matching Chromium build for screenshots and browser automation |
 | `go` | Latest stable archive from go.dev, verified using the official release checksum |
 | `uv` | Official Astral standalone installer into the unprivileged user's home |
 | `lerd` | Official Lerd installer after a WSL restart with systemd; provides containerized PHP, Composer, services, HTTPS and `.test` domains |

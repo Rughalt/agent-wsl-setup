@@ -14,7 +14,7 @@ param(
 
     [string]$GitEmail = 'cespenar@dragonshorn.info',
 
-    [ValidateSet('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')]
+    [ValidateSet('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'playwright', 'shiori', 'uv', 'zcode')]
     [string[]]$Tools = @(),
 
     [string]$SetupScript = (Join-Path $PSScriptRoot 'setup-wsl.sh'),
@@ -125,7 +125,7 @@ foreach ($value in @($GitName, $GitEmail)) {
 
 $selectedTools = @(
     if ($Tools -contains 'all') {
-        'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode', 'shiori'
+        'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'playwright', 'uv', 'zcode', 'shiori'
     }
     else {
         $Tools | Sort-Object -Unique

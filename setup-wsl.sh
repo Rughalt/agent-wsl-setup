@@ -17,7 +17,7 @@ Options:
   --user NAME        Linux user to create (default: imps)
   --git-name NAME    Git author name (default: Imp Kodzislaw)
   --git-email EMAIL  Git author email (default: cespenar@dragonshorn.info)
-  --tools LIST       Optional tools: devin,figcraft,gh,glab,go,gt,lerd,node,shiori,uv,zcode
+  --tools LIST       Optional tools: devin,figcraft,gh,glab,go,gt,lerd,node,playwright,shiori,uv,zcode
                      Use "all" for every optional tool (default: none)
   --post-restart     Complete tools that require systemd after a WSL restart
   -h, --help         Show this help
@@ -71,12 +71,12 @@ if [[ -n $tools_csv ]]; then
   IFS=',' read -r -a selected_tools <<< "$tools_csv"
 fi
 if [[ " ${selected_tools[*]} " == *" all "* ]]; then
-  selected_tools=(devin figcraft gh glab go gt lerd node uv zcode shiori)
+  selected_tools=(devin figcraft gh glab go gt lerd node playwright uv zcode shiori)
 fi
 
 for tool in "${selected_tools[@]}"; do
   case "$tool" in
-    devin|figcraft|gh|glab|go|gt|lerd|node|shiori|uv|zcode) ;;
+    devin|figcraft|gh|glab|go|gt|lerd|node|playwright|shiori|uv|zcode) ;;
     '') ;;
     *)
       printf 'Unknown optional tool: %s\n' "$tool" >&2
@@ -176,6 +176,13 @@ tool_is_installed() {
     gt) [[ -x "$user_home/.local/bin/gt" ]] ;;
     lerd) [[ -x "$user_home/.local/bin/lerd" ]] ;;
     node) as_user bash -c '. "$HOME/.nvm/nvm.sh" 2>/dev/null && command -v node >/dev/null' ;;
+    playwright)
+      as_user bash -c '
+        . "$HOME/.nvm/nvm.sh" 2>/dev/null &&
+        command -v playwright >/dev/null &&
+        playwright install --list 2>/dev/null | grep -qi chromium
+      '
+      ;;
     shiori) shiori_is_installed ;;
     uv) [[ -x "$user_home/.local/bin/uv" && -f "$user_home/.config/uv/uv-receipt.json" ]] ;;
     zcode) [[ -x "$user_home/.local/bin/zcode" ]] ;;
@@ -194,6 +201,32 @@ install_node() {
     . "$NVM_DIR/nvm.sh"
     nvm install --lts
     nvm alias default "lts/*"
+  '
+}
+
+install_playwright() {
+  local node_bin playwright_bin node_dir
+
+  if ! tool_is_installed node; then
+    echo 'Node.js is required by Playwright; installing Node LTS through NVM first.'
+    install_node
+  fi
+
+  as_user bash -c '
+    . "$HOME/.nvm/nvm.sh"
+    npm install --global playwright@latest
+  '
+  node_bin="$(as_user bash -c '. "$HOME/.nvm/nvm.sh" && command -v node')"
+  playwright_bin="$(as_user bash -c '. "$HOME/.nvm/nvm.sh" && command -v playwright')"
+  node_dir="$(dirname "$node_bin")"
+
+  # System dependencies are installed as root. Browser binaries remain in the
+  # unprivileged user's cache and are version-matched to the Playwright CLI.
+  env HOME="$user_home" PATH="$node_dir:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    "$playwright_bin" install-deps chromium
+  as_user bash -c '
+    . "$HOME/.nvm/nvm.sh"
+    playwright install chromium
   '
 }
 
@@ -904,6 +937,7 @@ for tool in "${selected_tools[@]}"; do
     go) install_go ;;
     gt) install_gt ;;
     node) install_node ;;
+    playwright) install_playwright ;;
     uv) install_uv ;;
     zcode) install_zcode ;;
   esac
@@ -944,7 +978,7 @@ EOF
 fi
 
 chmod 0700 "$user_home"
-chown -R "$linux_user:$linux_user" "$user_home"
+chown "$linux_user:$linux_user" "$user_home"
 apt-get clean
 
 step 'Final verification'

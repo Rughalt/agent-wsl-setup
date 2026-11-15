@@ -15,7 +15,7 @@ param(
 
     [string]$GitEmail = 'cespenar@dragonshorn.info',
 
-    [ValidateSet('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')]
+    [ValidateSet('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'playwright', 'shiori', 'uv', 'zcode')]
     [string[]]$Tools = @(),
 
     [switch]$SetupOnly,
@@ -57,7 +57,7 @@ if ($SourceRef -notmatch '^(main|[0-9a-fA-F]{7,40})$') {
     throw 'SourceRef must be "main" or a 7-40 character hexadecimal commit SHA.'
 }
 
-$allowedTools = @('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')
+$allowedTools = @('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'playwright', 'shiori', 'uv', 'zcode')
 $invalidTools = @($Tools | Where-Object { $_ -notin $allowedTools })
 if ($invalidTools.Count -gt 0) {
     throw "Unknown tool(s): $($invalidTools -join ', '). Allowed values: $($allowedTools -join ', ')."
