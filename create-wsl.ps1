@@ -165,8 +165,13 @@ $setupArgs = @(
     '--tools', ($selectedTools -join ',')
 )
 
+# PowerShell appends CRLF when piping a string to a native process. Without a
+# final sentinel, an LF-terminated script gains a blank line containing only CR,
+# which Bash attempts to execute as `$'\r'`. Let a comment absorb that suffix.
+$setupInput = (Get-Content -LiteralPath $SetupScript -Raw).TrimEnd([char[]]"`r`n") + "`n# PowerShell stdin terminator"
+
 # The setup script is streamed over stdin so it does not depend on /mnt/c.
-Get-Content -LiteralPath $SetupScript -Raw |
+$setupInput |
     & wsl.exe --distribution $DistroName --user root -- bash -s -- @setupArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Setup failed with exit code $LASTEXITCODE. The distribution was left installed for inspection."
@@ -179,7 +184,7 @@ Invoke-Wsl @('--terminate', $DistroName)
 if ($selectedTools -contains 'lerd') {
     Show-Step 'Finishing Lerd setup after the systemd restart'
     $postRestartArgs = @($setupArgs) + '--post-restart'
-    Get-Content -LiteralPath $SetupScript -Raw |
+    $setupInput |
         & wsl.exe --distribution $DistroName --user root -- bash -s -- @postRestartArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Lerd post-restart setup failed with exit code $LASTEXITCODE."
