@@ -21,6 +21,21 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# `irm ... | iex` cannot pass script parameters. Allow the concise README
+# one-liner to provide the optional tool list through a separate variable.
+if ($Tools.Count -eq 0) {
+    $oneLineTools = Get-Variable -Name AgentWslTools -ValueOnly -ErrorAction SilentlyContinue
+    if ($oneLineTools) {
+        $Tools = @($oneLineTools -split '\s*,\s*' | Where-Object { $_ })
+    }
+}
+
+$allowedTools = @('all', 'devin', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode')
+$invalidTools = @($Tools | Where-Object { $_ -notin $allowedTools })
+if ($invalidTools.Count -gt 0) {
+    throw "Unknown tool(s): $($invalidTools -join ', '). Allowed values: $($allowedTools -join ', ')."
+}
+
 $rawBase = 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main'
 $downloadRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-wsl-setup-{0}" -f [Guid]::NewGuid().ToString('N'))
 $createPath = Join-Path $downloadRoot 'create-wsl.ps1'

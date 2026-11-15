@@ -26,13 +26,13 @@ the Git hosting service; local Git hooks can be bypassed.
 Run the current version directly from this repository in PowerShell:
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1'))) -Tools all
+$AgentWslTools = 'all'; irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1' | iex
 ```
 
 Install only selected tools:
 
 ```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1'))) -Tools node,go,uv,lerd,gh,gt
+$AgentWslTools = 'node,go,uv,lerd,gh,gt'; irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1' | iex
 ```
 
 The bootstrap downloads `create-wsl.ps1` and `setup-wsl.sh` from this repository
