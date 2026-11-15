@@ -10,9 +10,9 @@ param(
 
     [string]$InstallLocation = (Join-Path $env:LOCALAPPDATA 'WSL\Ubuntu-Imps'),
 
-    [string]$GitName = 'Ubuntu Imp',
+    [string]$GitName = 'Imp Kodzislaw',
 
-    [string]$GitEmail = 'ubuntu-imps@localhost',
+    [string]$GitEmail = 'cespenar@dragonshorn.info',
 
     [ValidateSet('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')]
     [string[]]$Tools = @(),
@@ -254,7 +254,7 @@ else {
     Write-Host 'No optional CLIs were installed. Re-run with -SetupOnly -Tools gh,gt,... later.'
 }
 Write-Host 'GitHub authentication was intentionally not automated. Inside the distro, run:'
-Write-Host '  ssh-keygen -t ed25519 -a 100 -C "your-machine-user@users.noreply.github.com"'
+Write-Host ("  ssh-keygen -t ed25519 -a 100 -C `"{0}`"" -f $GitEmail)
 Write-Host '  gh auth login --git-protocol ssh'
 Write-Host 'To enable password-based sudo for the agent user, run once from PowerShell:'
 Write-Host "  wsl -d $DistroName -u root -- passwd $LinuxUser"

@@ -4,8 +4,8 @@ set -Eeuo pipefail
 trap 'printf "setup-wsl.sh failed at line %s\n" "$LINENO" >&2' ERR
 
 linux_user="imps"
-git_name="Ubuntu Imp"
-git_email="ubuntu-imps@localhost"
+git_name="Imp Kodzislaw"
+git_email="cespenar@dragonshorn.info"
 tools_csv=""
 post_restart=0
 
@@ -15,8 +15,8 @@ Usage: setup-wsl.sh [options]
 
 Options:
   --user NAME        Linux user to create (default: imps)
-  --git-name NAME    Git author name (default: Ubuntu Imp)
-  --git-email EMAIL  Git author email (default: ubuntu-imps@localhost)
+  --git-name NAME    Git author name (default: Imp Kodzislaw)
+  --git-email EMAIL  Git author email (default: cespenar@dragonshorn.info)
   --tools LIST       Optional tools: devin,figcraft,gh,glab,go,gt,lerd,node,shiori,uv,zcode
                      Use "all" for every optional tool (default: none)
   --post-restart     Complete tools that require systemd after a WSL restart
@@ -791,10 +791,12 @@ install -d -o "$linux_user" -g "$linux_user" -m 0700 \
   "$user_home" \
   "$user_home/.ssh" \
   "$user_home/work" \
+  "$user_home/.config" \
+  "$user_home/.config/git" \
   "$user_home/.config/git/hooks"
-# A previously interrupted run may have left parent directories owned by root.
-# Repair the dedicated account's home before any installer runs as that user.
-chown -R "$linux_user:$linux_user" "$user_home"
+# Repair only installer-managed parent directories. Never recursively chown the
+# whole home: Podman overlay storage can change concurrently and user projects
+# may intentionally contain files with different ownership.
 if ! checkpoint_done "$user_checkpoint"; then
   checkpoint_mark "$user_checkpoint"
 fi

@@ -11,9 +11,9 @@ param(
     [ValidatePattern('^(main|[0-9a-fA-F]{7,40})$')]
     [string]$SourceRef = 'main',
 
-    [string]$GitName = 'Ubuntu Imp',
+    [string]$GitName = 'Imp Kodzislaw',
 
-    [string]$GitEmail = 'ubuntu-imps@localhost',
+    [string]$GitEmail = 'cespenar@dragonshorn.info',
 
     [ValidateSet('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')]
     [string[]]$Tools = @(),

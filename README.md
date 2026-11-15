@@ -85,8 +85,8 @@ Useful customization:
 .\create-wsl.ps1 `
   -DistroName Ubuntu-Imps `
   -LinuxUser imps `
-  -GitName 'Dragonshorn Imp' `
-  -GitEmail 'YOUR-MACHINE-USER@users.noreply.github.com' `
+  -GitName 'Imp Kodzislaw' `
+  -GitEmail 'cespenar@dragonshorn.info' `
   -Tools node,go,uv,lerd,gh,gt,devin,zcode
 ```
 
@@ -123,12 +123,18 @@ wsl -d Ubuntu-Imps -u root
 
 ## Authentication
 
+The default Git author is `Imp Kodzislaw <cespenar@dragonshorn.info>`.
+Register that address in Gravatar to give the persona an avatar. To attribute
+the commits to the authenticated `imp-coders` GitHub account too, add and verify
+the same address in that account's email settings. GitHub CLI authentication
+and Git commit identity are separate settings.
+
 The scripts deliberately do not create, copy, or embed credentials. Start the
 distribution and authenticate each selected service interactively:
 
 ```bash
 wsl -d Ubuntu-Imps
-ssh-keygen -t ed25519 -a 100 -C "YOUR-MACHINE-USER@users.noreply.github.com"
+ssh-keygen -t ed25519 -a 100 -C "cespenar@dragonshorn.info"
 gh auth login --git-protocol ssh
 gt auth login
 glab auth login
