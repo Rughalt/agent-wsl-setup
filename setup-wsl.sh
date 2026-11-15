@@ -454,8 +454,9 @@ EOF
 }
 
 install_lerd_postrestart() {
-  local user_id sudoers_file sudoers_tmp status
+  local user_id sudoers_file sudoers_tmp status preexisting_port_conflict
   user_id="$(id -u "$linux_user")"
+  preexisting_port_conflict=0
 
   apt-get update
   apt-get install -y --no-install-recommends \
@@ -472,17 +473,38 @@ install_lerd_postrestart() {
 
   configure_lerd_podman_backend
 
+  if [[ -n $(ss -H -ltn '( sport = :80 or sport = :443 or sport = :7073 )') ]]; then
+    preexisting_port_conflict=1
+    cat <<'EOF'
+WARNING: ports 80, 443, or 7073 are already in use.
+WSL shares these listeners between running distributions. Lerd will be installed,
+but its web stack cannot start while another distro's Lerd/Herd stack owns them.
+No existing service will be stopped automatically.
+EOF
+  fi
+
   loginctl enable-linger "$linux_user"
   systemctl start "user@${user_id}.service"
 
   sudoers_file="/etc/sudoers.d/90-ubuntu-imps-lerd-bootstrap"
   sudoers_tmp="$(mktemp)"
-  printf '%s ALL=(root) NOPASSWD: %s/.local/bin/lerd bootstrap --system\n' \
-    "$linux_user" "$user_home" > "$sudoers_tmp"
+  cat > "$sudoers_tmp" <<EOF
+$linux_user ALL=(root) NOPASSWD: $user_home/.local/bin/lerd bootstrap --system
+$linux_user ALL=(root) NOPASSWD: /usr/bin/mkdir -p /etc
+$linux_user ALL=(root) NOPASSWD: /usr/bin/tee /etc/wsl.conf
+$linux_user ALL=(root) NOPASSWD: /usr/bin/chmod 644 /etc/wsl.conf
+$linux_user ALL=(root) NOPASSWD: /usr/bin/tee /etc/systemd/resolved.conf.d/wsl-upstream.conf
+$linux_user ALL=(root) NOPASSWD: /usr/bin/chmod 644 /etc/systemd/resolved.conf.d/wsl-upstream.conf
+$linux_user ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/resolv.conf
+$linux_user ALL=(root) NOPASSWD: /usr/bin/ln -s /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+$linux_user ALL=(root) NOPASSWD: /usr/bin/ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+$linux_user ALL=(root) NOPASSWD: /usr/bin/systemctl restart systemd-resolved
+EOF
   chmod 0440 "$sudoers_tmp"
   visudo -cf "$sudoers_tmp" >/dev/null
   install -o root -g root -m 0440 "$sudoers_tmp" "$sudoers_file"
   rm -f -- "$sudoers_tmp"
+  trap 'rm -f -- "$sudoers_file"; exit 130' INT TERM
 
   status=0
   # Detach the vendor installer from the controlling terminal so its initial
@@ -490,11 +512,29 @@ install_lerd_postrestart() {
   # unattended setup mode while the narrowly scoped bootstrap sudo rule exists.
   as_user_in "$user_home" setsid -f -w bash -c 'curl -fsSL https://lerd.sh/install.sh | bash' </dev/null || status=$?
   if [[ $status -eq 0 ]]; then
+    # Always repair the official narrowly scoped DNS sudoers rules first.
+    # A partially completed Lerd install may otherwise skip bootstrap and hang
+    # on a password prompt while setup is running without a terminal.
+    as_user_in "$user_home" sudo "$user_home/.local/bin/lerd" bootstrap --system || status=$?
+  fi
+  if [[ $status -eq 0 ]]; then
     as_user_in "$user_home" "$user_home/.local/bin/lerd" install --unattended || status=$?
   fi
   rm -f -- "$sudoers_file"
+  trap - INT TERM
   [[ $status -eq 0 ]] || return "$status"
-  as_user_in "$user_home" "$user_home/.local/bin/lerd" doctor
+  if ! as_user_in "$user_home" "$user_home/.local/bin/lerd" doctor; then
+    echo 'WARNING: Lerd is installed, but its health check reports problems.' >&2
+  fi
+  if [[ $preexisting_port_conflict -eq 1 ]]; then
+    cat <<EOF
+
+Lerd was installed for $linux_user, but another running WSL distribution still
+owns one or more of ports 80, 443, and 7073. Stop Lerd in that distribution,
+then start this one as $linux_user with:
+  lerd start
+EOF
+  fi
 }
 
 install_shell_experience() {

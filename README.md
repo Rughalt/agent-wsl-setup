@@ -183,9 +183,21 @@ packages are intentionally not used.
 
 Lerd needs systemd and rootless Podman. The setup enables systemd, restarts the
 distribution, installs Lerd in a detached non-interactive session, and then
-explicitly runs `lerd install --unattended`. It grants only the temporary
-bootstrap permission needed by the official installer. Day-to-day Lerd usage
-runs as `imps` without sudo.
+explicitly runs the official system bootstrap followed by
+`lerd install --unattended`. Temporary sudo permissions are limited to that
+bootstrap and the exact files/commands Lerd uses to hand WSL DNS to
+`systemd-resolved`; they are removed immediately afterward. Day-to-day Lerd
+usage runs as `imps` without sudo.
+
+All running WSL distributions share the host's listening ports. If Lerd is
+already running in another distribution, its nginx and dashboard normally own
+ports 80, 443, and 7073. The installer will still install Lerd in `Ubuntu-Imps`
+and record the completed step, but it will not stop the other stack. To switch
+manually, stop Lerd in the other distribution and then run:
+
+```powershell
+wsl -d Ubuntu-Imps -u imps -- bash -lc 'lerd start'
+```
 
 Oh My Posh is installed from its official Linux installer into
 `~/.local/bin`. The custom theme is stored locally at
