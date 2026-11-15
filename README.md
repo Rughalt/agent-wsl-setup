@@ -6,14 +6,14 @@ credentials, Git configuration, or files from an existing Ubuntu installation.
 ## What it does
 
 - Installs a fresh Ubuntu distribution named `Ubuntu-Imps`.
-- Creates a password-locked, non-sudo `imps` user.
+- Creates an `imps` user with optional password-based `sudo` access.
 - Disables Windows drive automounting and Windows executable interoperability.
 - Uses private-by-default file permissions (`umask 077`).
 - Keeps Git, SSH, and CLI credentials separate from the Windows user and other
   WSL distributions.
 - Adds a local guardrail against direct pushes to `main` and `master`.
-- Optionally installs GitHub CLI (`gh`), GitLab CLI (`glab`), Gitea CLI (`gt`),
-  Devin CLI, and the official ZCode CLI source tree.
+- Optionally installs Node through NVM, Go, `uv`, Lerd, GitHub CLI (`gh`),
+  GitLab CLI (`glab`), Gitea CLI (`gt`), Devin CLI, and ZCode CLI.
 
 WSL is useful environment separation, **not a strong security boundary**. Use a
 separate VM for untrusted code. Enforce branch protection and least privilege on
@@ -26,7 +26,7 @@ PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\create-wsl.ps1 -Tools gh,gt,devin
+.\create-wsl.ps1 -Tools node,go,uv,lerd,gh,gt,devin
 ```
 
 Install every optional CLI (the ZCode source build can take a while):
@@ -44,7 +44,7 @@ Install no optional CLIs:
 Add or repair tools later without recreating the distribution:
 
 ```powershell
-.\create-wsl.ps1 -SetupOnly -Tools gh,glab,gt
+.\create-wsl.ps1 -SetupOnly -Tools node,go,uv,gh,glab,gt
 ```
 
 Useful customization:
@@ -55,7 +55,36 @@ Useful customization:
   -LinuxUser imps `
   -GitName 'Dragonshorn Imp' `
   -GitEmail 'YOUR-MACHINE-USER@users.noreply.github.com' `
-  -Tools gh,gt,devin,zcode
+  -Tools node,go,uv,lerd,gh,gt,devin,zcode
+```
+
+## Entering the distribution and enabling sudo
+
+`imps` is configured as the default user, so the normal login is:
+
+```powershell
+wsl -d Ubuntu-Imps
+```
+
+You can also select the user explicitly:
+
+```powershell
+wsl -d Ubuntu-Imps -u imps
+```
+
+The account belongs to the `sudo` group, but its password starts locked so the
+setup never generates or stores a credential. Set it once from PowerShell:
+
+```powershell
+wsl -d Ubuntu-Imps -u root -- passwd imps
+```
+
+After entering the new password twice, open the distribution normally and use
+`sudo` when an additional package genuinely needs root access. To open an
+emergency root shell without changing the default user:
+
+```powershell
+wsl -d Ubuntu-Imps -u root
 ```
 
 ## Authentication
@@ -84,10 +113,19 @@ rules.
 | `gt` | Official Gitea installer, which verifies its downloaded binary |
 | `devin` | Official `cli.devin.ai` installer, run as the unprivileged user |
 | `zcode` | Official `zai-org/ZCode` source; Node is downloaded from nodejs.org and checksum-verified, then the CLI is built with the versions pinned by upstream |
+| `node` | NVM from the pinned official installer, followed by the latest Node LTS |
+| `go` | Latest stable archive from go.dev, verified using the official release checksum |
+| `uv` | Official Astral standalone installer into the unprivileged user's home |
+| `lerd` | Official Lerd installer after a WSL restart with systemd; provides containerized PHP, Composer, services, HTTPS and `.test` domains |
 
 ZCode is built from the official source because upstream does not currently
 publish a standalone Linux CLI artifact. The similarly named third-party npm
 packages are intentionally not used.
+
+Lerd needs systemd and rootless Podman. The setup enables systemd, restarts the
+distribution, installs Lerd in the second phase, and grants only the temporary
+bootstrap permission needed by its official installer. Day-to-day Lerd usage
+runs as `imps` without sudo.
 
 ## Removal
 

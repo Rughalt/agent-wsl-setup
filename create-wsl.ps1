@@ -14,7 +14,7 @@ param(
 
     [string]$GitEmail = 'ubuntu-imps@localhost',
 
-    [ValidateSet('all', 'devin', 'gh', 'glab', 'gt', 'zcode')]
+    [ValidateSet('all', 'devin', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode')]
     [string[]]$Tools = @(),
 
     [string]$SetupScript = (Join-Path $PSScriptRoot 'setup-wsl.sh'),
@@ -60,6 +60,14 @@ foreach ($value in @($GitName, $GitEmail)) {
     }
 }
 
+$selectedTools = if ($Tools -contains 'all') {
+    @('devin', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode')
+}
+else {
+    @($Tools | Sort-Object -Unique)
+}
+$script:TotalSteps = if ($selectedTools -contains 'lerd') { 5 } else { 4 }
+
 $installed = @(& wsl.exe --list --quiet) |
     ForEach-Object { ($_ -replace "`0", '').Trim() } |
     Where-Object { $_ }
@@ -69,6 +77,7 @@ if ($SetupOnly) {
     if (-not $exists) {
         throw "Distribution '$DistroName' is not installed."
     }
+    Show-Step "Using the existing $DistroName distribution"
 }
 else {
     if ($exists) {
@@ -101,13 +110,6 @@ else {
     )
 }
 
-$selectedTools = if ($Tools -contains 'all') {
-    @('devin', 'gh', 'glab', 'gt', 'zcode')
-}
-else {
-    @($Tools | Sort-Object -Unique)
-}
-
 Show-Step 'Applying the Linux baseline and WSL hardening'
 $setupArgs = @(
     '--user', $LinuxUser,
@@ -127,6 +129,17 @@ if ($LASTEXITCODE -ne 0) {
 Show-Step 'Restarting the distribution to apply wsl.conf'
 Invoke-Wsl @('--terminate', $DistroName)
 
+if ($selectedTools -contains 'lerd') {
+    Show-Step 'Finishing Lerd setup after the systemd restart'
+    $postRestartArgs = @($setupArgs) + '--post-restart'
+    Get-Content -LiteralPath $SetupScript -Raw |
+        & wsl.exe --distribution $DistroName --user root -- bash -s -- @postRestartArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Lerd post-restart setup failed with exit code $LASTEXITCODE."
+    }
+    Invoke-Wsl @('--terminate', $DistroName)
+}
+
 Show-Step 'Finished'
 Write-Progress -Activity 'Ubuntu-Imps' -Completed
 
@@ -142,5 +155,7 @@ else {
 Write-Host 'GitHub authentication was intentionally not automated. Inside the distro, run:'
 Write-Host '  ssh-keygen -t ed25519 -a 100 -C "your-machine-user@users.noreply.github.com"'
 Write-Host '  gh auth login --git-protocol ssh'
+Write-Host 'To enable password-based sudo for the agent user, run once from PowerShell:'
+Write-Host "  wsl -d $DistroName -u root -- passwd $LinuxUser"
 Write-Host ''
 Write-Warning 'WSL is useful separation, not a strong security boundary. Use a separate VM for untrusted code.'

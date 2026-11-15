@@ -7,6 +7,7 @@ linux_user="imps"
 git_name="Ubuntu Imp"
 git_email="ubuntu-imps@localhost"
 tools_csv=""
+post_restart=0
 
 usage() {
   cat <<'EOF'
@@ -16,8 +17,9 @@ Options:
   --user NAME        Linux user to create (default: imps)
   --git-name NAME    Git author name (default: Ubuntu Imp)
   --git-email EMAIL  Git author email (default: ubuntu-imps@localhost)
-  --tools LIST       Comma-separated optional tools: devin,gh,glab,gt,zcode
+  --tools LIST       Optional tools: devin,gh,glab,go,gt,lerd,node,uv,zcode
                      Use "all" for every optional tool (default: none)
+  --post-restart     Complete tools that require systemd after a WSL restart
   -h, --help         Show this help
 
 Run as root inside the dedicated WSL distribution. The script does not create,
@@ -43,6 +45,10 @@ while (($#)); do
       tools_csv="${2-}"
       shift 2
       ;;
+    --post-restart)
+      post_restart=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -65,12 +71,12 @@ if [[ -n $tools_csv ]]; then
   IFS=',' read -r -a selected_tools <<< "$tools_csv"
 fi
 if [[ " ${selected_tools[*]} " == *" all "* ]]; then
-  selected_tools=(devin gh glab gt zcode)
+  selected_tools=(devin gh glab go gt lerd node uv zcode)
 fi
 
 for tool in "${selected_tools[@]}"; do
   case "$tool" in
-    devin|gh|glab|gt|zcode) ;;
+    devin|gh|glab|go|gt|lerd|node|uv|zcode) ;;
     '') ;;
     *)
       printf 'Unknown optional tool: %s\n' "$tool" >&2
@@ -98,17 +104,72 @@ else
 fi
 
 step_current=0
-step_total=$((5 + ${#selected_tools[@]}))
+tool_step_count=0
+for tool in "${selected_tools[@]}"; do
+  [[ $tool == lerd ]] || tool_step_count=$((tool_step_count + 1))
+done
+step_total=$((5 + tool_step_count))
 step() {
   step_current=$((step_current + 1))
   printf '\n%s[%d/%d] %s%s\n' "$c_cyan" "$step_current" "$step_total" "$1" "$c_reset"
 }
 
 as_user() {
+  local user_id
+  user_id="$(id -u "$linux_user")"
   runuser -u "$linux_user" -- env \
     HOME="$user_home" \
     PATH="$user_home/.local/bin:/usr/local/bin:/usr/bin:/bin" \
+    XDG_RUNTIME_DIR="/run/user/$user_id" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$user_id/bus" \
     "$@"
+}
+
+install_node() {
+  touch "$user_home/.bashrc"
+  chown "$linux_user:$linux_user" "$user_home/.bashrc"
+  chmod 0644 "$user_home/.bashrc"
+  as_user bash -c '
+    export NVM_DIR="$HOME/.nvm"
+    export PROFILE="$HOME/.bashrc"
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.41.0/install.sh | bash
+    . "$NVM_DIR/nvm.sh"
+    nvm install --lts
+    nvm alias default "lts/*"
+  '
+}
+
+install_go() {
+  local release_json version machine go_arch filename checksum tmpdir target
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64) go_arch=amd64 ;;
+    aarch64|arm64) go_arch=arm64 ;;
+    *) printf 'Go is not supported by this script on architecture %s\n' "$machine" >&2; return 1 ;;
+  esac
+
+  tmpdir="$(mktemp -d)"
+  release_json="$tmpdir/releases.json"
+  curl -fsSL 'https://go.dev/dl/?mode=json' -o "$release_json"
+  version="$(jq -r '.[0].version' "$release_json")"
+  filename="${version}.linux-${go_arch}.tar.gz"
+  checksum="$(jq -r --arg n "$filename" '.[0].files[] | select(.filename == $n) | .sha256' "$release_json")"
+  [[ -n $version && $version != null && -n $checksum && $checksum != null ]]
+  curl -fsSL "https://go.dev/dl/$filename" -o "$tmpdir/$filename"
+  echo "$checksum  $tmpdir/$filename" | sha256sum --check --status
+  target="/opt/go/$version"
+  if [[ ! -d $target ]]; then
+    install -d -m 0755 /opt/go
+    tar -xzf "$tmpdir/$filename" -C "$tmpdir"
+    mv "$tmpdir/go" "$target"
+  fi
+  ln -sfn "$target/bin/go" /usr/local/bin/go
+  ln -sfn "$target/bin/gofmt" /usr/local/bin/gofmt
+  rm -rf -- "$tmpdir"
+}
+
+install_uv() {
+  as_user sh -c 'curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 sh'
 }
 
 install_gh() {
@@ -153,6 +214,40 @@ install_gt() {
 
 install_devin() {
   as_user sh -c 'curl -fsSL https://cli.devin.ai/install.sh | bash'
+}
+
+install_lerd_postrestart() {
+  local user_id sudoers_file sudoers_tmp status
+  user_id="$(id -u "$linux_user")"
+
+  apt-get update
+  apt-get install -y --no-install-recommends \
+    dbus-user-session \
+    dnsmasq-base \
+    fuse-overlayfs \
+    libnss3-tools \
+    podman \
+    slirp4netns \
+    systemd-resolved \
+    uidmap
+
+  loginctl enable-linger "$linux_user"
+  systemctl start "user@${user_id}.service"
+
+  sudoers_file="/etc/sudoers.d/90-ubuntu-imps-lerd-bootstrap"
+  sudoers_tmp="$(mktemp)"
+  printf '%s ALL=(root) NOPASSWD: %s/.local/bin/lerd bootstrap --system\n' \
+    "$linux_user" "$user_home" > "$sudoers_tmp"
+  chmod 0440 "$sudoers_tmp"
+  visudo -cf "$sudoers_tmp" >/dev/null
+  install -o root -g root -m 0440 "$sudoers_tmp" "$sudoers_file"
+  rm -f -- "$sudoers_tmp"
+
+  status=0
+  as_user bash -c 'curl -fsSL https://lerd.sh/install.sh | bash' || status=$?
+  rm -f -- "$sudoers_file"
+  [[ $status -eq 0 ]] || return "$status"
+  as_user "$user_home/.local/bin/lerd" doctor
 }
 
 install_zcode() {
@@ -221,6 +316,19 @@ if ! grep -qiE '(microsoft|wsl)' /proc/sys/kernel/osrelease /proc/version 2>/dev
   exit 1
 fi
 
+if [[ $post_restart -eq 1 ]]; then
+  if ! id "$linux_user" >/dev/null 2>&1; then
+    echo "The user $linux_user does not exist; run the baseline phase first." >&2
+    exit 1
+  fi
+  user_home="$(getent passwd "$linux_user" | cut -d: -f6)"
+  if has_tool lerd; then
+    printf '\nCompleting Lerd installation after the systemd restart...\n'
+    install_lerd_postrestart
+  fi
+  exit 0
+fi
+
 export DEBIAN_FRONTEND=noninteractive
 step 'Updating Ubuntu and installing the base developer toolchain'
 apt-get update
@@ -235,6 +343,7 @@ apt-get install -y --no-install-recommends \
   jq \
   openssh-client \
   ripgrep \
+  sudo \
   tar \
   unzip \
   wget \
@@ -244,15 +353,13 @@ apt-get install -y --no-install-recommends \
 if ! id "$linux_user" >/dev/null 2>&1; then
   step "Creating the locked-down Linux user: $linux_user"
   adduser --disabled-password --gecos '' --shell /bin/bash "$linux_user"
+  passwd --lock "$linux_user" >/dev/null
 else
   step "Reusing the existing Linux user: $linux_user"
 fi
 
-# The agent account deliberately has no sudo access and no usable password.
-if getent group sudo >/dev/null 2>&1; then
-  gpasswd --delete "$linux_user" sudo >/dev/null 2>&1 || true
-fi
-passwd --lock "$linux_user" >/dev/null
+# The account may use sudo after the owner sets a password explicitly.
+usermod --append --groups sudo "$linux_user"
 
 user_home="$(getent passwd "$linux_user" | cut -d: -f6)"
 if [[ -z $user_home || $user_home == / ]]; then
@@ -278,6 +385,9 @@ appendWindowsPath=false
 
 [user]
 default=$linux_user
+
+[boot]
+systemd=true
 EOF
 chmod 0644 /etc/wsl.conf
 
@@ -320,12 +430,16 @@ runuser -u "$linux_user" -- git config --global credential.helper ''
 runuser -u "$linux_user" -- git config --global core.hooksPath "$user_home/.config/git/hooks"
 
 for tool in "${selected_tools[@]}"; do
+  [[ $tool == lerd ]] && continue
   step "Installing optional tool: $tool"
   case "$tool" in
     devin) install_devin ;;
     gh) install_gh ;;
     glab) install_glab ;;
+    go) install_go ;;
     gt) install_gt ;;
+    node) install_node ;;
+    uv) install_uv ;;
     zcode) install_zcode ;;
   esac
 done
@@ -334,6 +448,7 @@ cat > /etc/profile.d/99-ubuntu-imps.sh <<'EOF'
 # Private-by-default files for interactive shells.
 umask 077
 export HISTCONTROL=ignoreboth:erasedups
+export PATH="$HOME/.local/bin:$HOME/go/bin:$HOME/.config/composer/vendor/bin:/usr/local/go/bin:$PATH"
 EOF
 chmod 0644 /etc/profile.d/99-ubuntu-imps.sh
 
@@ -345,6 +460,13 @@ step 'Final verification'
 for tool in "${selected_tools[@]}"; do
   case "$tool" in
     devin) command_path="$user_home/.local/bin/devin" ;;
+    go) command_path="$(command -v go || true)" ;;
+    lerd) continue ;;
+    node)
+      as_user bash -c '. "$HOME/.nvm/nvm.sh" && command -v node >/dev/null'
+      continue
+      ;;
+    uv) command_path="$user_home/.local/bin/uv" ;;
     zcode) command_path="$user_home/.local/bin/zcode" ;;
     gt) command_path="$user_home/.local/bin/gt" ;;
     gh|glab) command_path="$(command -v "$tool" || true)" ;;
@@ -362,10 +484,11 @@ Ubuntu-Imps hardening applied.
 After Windows restarts this distribution:
   * Windows drives will not be mounted automatically.
   * Windows executables and Windows PATH injection will be disabled.
-  * $linux_user will be the default, password-locked, non-sudo user.
+  * $linux_user will be the default user and a member of sudo.
   * Direct pushes to main/master will be blocked by a local Git hook.
 
 No GitHub or agent credentials were created or copied.
+The sudo password remains locked until you set it explicitly from Windows.
 Authenticate interactively as $linux_user only after reviewing access scopes.
 Enforce pull requests and branch protection on GitHub; local hooks are bypassable.
 WSL is not a strong sandbox or a substitute for a separate VM.
