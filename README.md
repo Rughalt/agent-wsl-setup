@@ -182,7 +182,22 @@ runs as `imps` without sudo.
 
 ## Removal
 
-Review the name carefully before running this destructive command:
+When the one-line installer finds an existing distribution, choose `R` to reset
+it. The installer requires typing the exact distribution name before it calls
+`wsl --unregister`, removes its managed install directory, and recreates it:
+
+```powershell
+$AgentWslTools = 'all'; irm 'https://raw.githubusercontent.com/Rughalt/agent-wsl-setup/main/install.ps1' | iex
+```
+
+The downloaded-script equivalent is:
+
+```powershell
+.\create-wsl.ps1 -ResetDistro -Tools all
+```
+
+To permanently remove the distribution without recreating it, review the name
+carefully and run:
 
 ```powershell
 wsl --unregister Ubuntu-Imps

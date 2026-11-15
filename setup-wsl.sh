@@ -347,6 +347,9 @@ install_zcode() {
     return 0
   fi
 
+  # A failed build has no checkpoint; discard only its managed build tree so
+  # the next attempt starts from a known state.
+  rm -rf -- "$source_dir" "$toolchain"
   install -d -o "$linux_user" -g "$linux_user" -m 0700 "$share_dir" "$user_home/.local/bin"
   as_user git clone --depth 1 https://github.com/zai-org/ZCode.git "$source_dir"
   node_version="$(awk -F'"' '/^[[:space:]]*node[[:space:]]*=/ {print $2; exit}' "$source_dir/mise.toml")"
@@ -372,11 +375,13 @@ install_zcode() {
   rm -rf -- "$tmpdir"
 
   as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
+    "$toolchain/bin/corepack" enable --install-directory "$toolchain/bin"
+  as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
     "$toolchain/bin/corepack" prepare "pnpm@$pnpm_version" --activate
   as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
-    pnpm --dir "$source_dir" install --frozen-lockfile
+    "$toolchain/bin/pnpm" --dir "$source_dir" install --frozen-lockfile
   as_user env PATH="$toolchain/bin:/usr/local/bin:/usr/bin:/bin" \
-    pnpm --dir "$source_dir" --filter '@zcode/cli...' build
+    "$toolchain/bin/pnpm" --dir "$source_dir" --filter '@zcode/cli...' build
 
   cat > "$user_home/.local/bin/zcode" <<EOF
 #!/bin/sh

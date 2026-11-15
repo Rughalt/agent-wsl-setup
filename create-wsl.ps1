@@ -19,7 +19,9 @@ param(
 
     [string]$SetupScript = (Join-Path $PSScriptRoot 'setup-wsl.sh'),
 
-    [switch]$SetupOnly
+    [switch]$SetupOnly,
+
+    [switch]$ResetDistro
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,6 +45,20 @@ function Invoke-Wsl {
     & wsl.exe @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "wsl.exe failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Remove-ManagedInstallLocation {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $managedRoot = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'WSL'))
+    $target = [System.IO.Path]::GetFullPath($Path)
+    $managedPrefix = $managedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $target.StartsWith($managedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to recursively remove an install location outside the managed WSL directory: $target"
+    }
+    if (Test-Path -LiteralPath $target) {
+        Remove-Item -LiteralPath $target -Recurse -Force
     }
 }
 
@@ -73,17 +89,39 @@ $installed = @(& wsl.exe --list --quiet) |
     Where-Object { $_ }
 $exists = $installed -contains $DistroName
 
-if ($exists -and -not $SetupOnly) {
+if ($exists -and -not $SetupOnly -and -not $ResetDistro) {
     Write-Host ''
     Write-Warning "Distribution '$DistroName' already exists."
-    $answer = Read-Host 'Re-run setup and hardening on the existing distribution? [Y/n]'
-    if ([string]::IsNullOrWhiteSpace($answer) -or $answer -match '^(?i:y|yes|t|tak)$') {
-        $SetupOnly = $true
+    $answer = Read-Host 'Choose: [S] re-run setup, [R] reset and recreate, [C] cancel (default: S)'
+    switch -Regex ($answer) {
+        '^\s*$|^(?i:s|setup|y|yes|t|tak)$' { $SetupOnly = $true; break }
+        '^(?i:r|reset)$' { $ResetDistro = $true; break }
+        default {
+            Write-Host 'Cancelled. The existing distribution was not changed.' -ForegroundColor Yellow
+            return
+        }
     }
-    else {
-        Write-Host 'Cancelled. The existing distribution was not changed.' -ForegroundColor Yellow
+}
+
+if ($ResetDistro) {
+    Write-Host ''
+    Write-Warning "RESET PERMANENTLY DELETES '$DistroName' AND EVERY FILE AND CREDENTIAL STORED INSIDE IT."
+    $confirmation = Read-Host "Type the exact distribution name '$DistroName' to continue"
+    if ($confirmation -cne $DistroName) {
+        Write-Host 'Reset cancelled. Nothing was deleted.' -ForegroundColor Yellow
         return
     }
+    if ($exists) {
+        & wsl.exe --terminate $DistroName 2>$null
+        & wsl.exe --unregister $DistroName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not unregister distribution '$DistroName'."
+        }
+    }
+    Remove-ManagedInstallLocation -Path $InstallLocation
+    $exists = $false
+    $SetupOnly = $false
+    Write-Host "Distribution '$DistroName' was removed and will be recreated." -ForegroundColor Yellow
 }
 
 if ($SetupOnly) {

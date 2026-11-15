@@ -15,7 +15,9 @@ param(
     [ValidateSet('all', 'devin', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode')]
     [string[]]$Tools = @(),
 
-    [switch]$SetupOnly
+    [switch]$SetupOnly,
+
+    [switch]$ResetDistro
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,6 +36,13 @@ if (-not $SetupOnly) {
     $oneLineSetupOnly = Get-Variable -Name AgentWslSetupOnly -Scope Global -ValueOnly -ErrorAction SilentlyContinue
     if ($oneLineSetupOnly -eq $true) {
         $SetupOnly = $true
+    }
+}
+
+if (-not $ResetDistro) {
+    $oneLineReset = Get-Variable -Name AgentWslResetDistro -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+    if ($oneLineReset -eq $true) {
+        $ResetDistro = $true
     }
 }
 
@@ -68,6 +77,9 @@ try {
     }
     if ($SetupOnly) {
         $arguments.SetupOnly = $true
+    }
+    if ($ResetDistro) {
+        $arguments.ResetDistro = $true
     }
 
     & $createScript @arguments
