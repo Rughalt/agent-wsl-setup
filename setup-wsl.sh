@@ -17,7 +17,7 @@ Options:
   --user NAME        Linux user to create (default: imps)
   --git-name NAME    Git author name (default: Ubuntu Imp)
   --git-email EMAIL  Git author email (default: ubuntu-imps@localhost)
-  --tools LIST       Optional tools: devin,gh,glab,go,gt,lerd,node,uv,zcode
+  --tools LIST       Optional tools: devin,figcraft,gh,glab,go,gt,lerd,node,shiori,uv,zcode
                      Use "all" for every optional tool (default: none)
   --post-restart     Complete tools that require systemd after a WSL restart
   -h, --help         Show this help
@@ -71,12 +71,12 @@ if [[ -n $tools_csv ]]; then
   IFS=',' read -r -a selected_tools <<< "$tools_csv"
 fi
 if [[ " ${selected_tools[*]} " == *" all "* ]]; then
-  selected_tools=(devin gh glab go gt lerd node uv zcode)
+  selected_tools=(devin figcraft gh glab go gt lerd node uv zcode shiori)
 fi
 
 for tool in "${selected_tools[@]}"; do
   case "$tool" in
-    devin|gh|glab|go|gt|lerd|node|uv|zcode) ;;
+    devin|figcraft|gh|glab|go|gt|lerd|node|shiori|uv|zcode) ;;
     '') ;;
     *)
       printf 'Unknown optional tool: %s\n' "$tool" >&2
@@ -141,15 +141,36 @@ checkpoint_mark() {
   mv -f -- "$tmp" "$state_dir/$checkpoint"
 }
 
+shiori_is_installed() {
+  local checkout state_file skill_name target source found
+  checkout="$user_home/.local/share/shiori/shiori-brain"
+  state_file="$user_home/.local/state/shiori/managed-skills"
+  [[ -d "$checkout/.git" && -s $state_file ]] || return 1
+  found=0
+  while IFS= read -r skill_name; do
+    [[ -n $skill_name ]] || continue
+    found=1
+    target="$user_home/.agents/skills/$skill_name"
+    source="$checkout/skills/$skill_name"
+    [[ -L $target && $(readlink "$target") == "$source" ]] || return 1
+  done < "$state_file"
+  [[ $found -eq 1 ]]
+}
+
 tool_is_installed() {
   local tool="$1"
   case "$tool" in
     devin) [[ -x "$user_home/.local/bin/devin" ]] ;;
+    figcraft)
+      [[ -x "$user_home/.local/bin/figcraft-cli" ]] &&
+        as_user "$user_home/.local/bin/figcraft-cli" --version >/dev/null 2>&1
+      ;;
     gh|glab) command -v "$tool" >/dev/null 2>&1 ;;
     go) command -v go >/dev/null 2>&1 ;;
     gt) [[ -x "$user_home/.local/bin/gt" ]] ;;
     lerd) [[ -x "$user_home/.local/bin/lerd" ]] ;;
     node) as_user bash -c '. "$HOME/.nvm/nvm.sh" 2>/dev/null && command -v node >/dev/null' ;;
+    shiori) shiori_is_installed ;;
     uv) [[ -x "$user_home/.local/bin/uv" && -f "$user_home/.config/uv/uv-receipt.json" ]] ;;
     zcode) [[ -x "$user_home/.local/bin/zcode" ]] ;;
     *) return 1 ;;
@@ -300,6 +321,66 @@ install_devin() {
   ln -sfn "$current_link/bin/devin" "$target_bin"
   chown -R "$linux_user:$linux_user" "$user_home/.local/share/devin" "$user_home/.local/bin"
   rm -rf -- "$tmpdir"
+}
+
+install_figcraft() {
+  local machine arch tmpdir release_json tag version asset base_url checksums archive checksum_line
+  local extract_dir relative_binary install_root target_bin
+
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64) arch=x86_64 ;;
+    aarch64|arm64) arch=aarch64 ;;
+    *) printf 'FigCraft CLI is not available for architecture %s.\n' "$machine" >&2; return 1 ;;
+  esac
+
+  tmpdir="$(mktemp -d)"
+  release_json="$tmpdir/release.json"
+  checksums="$tmpdir/SHA256SUMS.txt"
+  curl -fsSL https://api.github.com/repos/storytold/figcraft/releases/latest -o "$release_json"
+  tag="$(jq -r '.tag_name' "$release_json")"
+  if [[ ! $tag =~ ^v[0-9][A-Za-z0-9._-]*$ ]]; then
+    printf 'The latest FigCraft release has an invalid tag: %s\n' "$tag" >&2
+    rm -rf -- "$tmpdir"
+    return 1
+  fi
+
+  version="${tag#v}"
+  asset="figcraft-${version}-linux-${arch}.tar.gz"
+  base_url="https://github.com/storytold/figcraft/releases/download/$tag"
+  archive="$tmpdir/$asset"
+  extract_dir="$tmpdir/extracted"
+  curl -fsSL "$base_url/SHA256SUMS.txt" -o "$checksums"
+  curl -fsSL "$base_url/$asset" -o "$archive"
+  checksum_line="$(grep -E "^[a-fA-F0-9]{64} [ *]${asset}$" "$checksums" || true)"
+  if [[ -z $checksum_line || $(printf '%s\n' "$checksum_line" | wc -l) -ne 1 ]]; then
+    printf 'Could not find one trusted checksum for %s.\n' "$asset" >&2
+    rm -rf -- "$tmpdir"
+    return 1
+  fi
+  (cd "$tmpdir" && printf '%s\n' "$checksum_line" | sha256sum --check --status)
+
+  mkdir -p "$extract_dir"
+  tar -xzf "$archive" -C "$extract_dir"
+  relative_binary="$(find "$extract_dir" -type f -name figcraft-cli -perm /111 -printf '%P\n' | head -n 1)"
+  if [[ -z $relative_binary ]]; then
+    printf 'The verified FigCraft archive does not contain figcraft-cli.\n' >&2
+    rm -rf -- "$tmpdir"
+    return 1
+  fi
+
+  install_root="$user_home/.local/share/figcraft-cli/$version"
+  target_bin="$user_home/.local/bin/figcraft-cli"
+  install -d -o "$linux_user" -g "$linux_user" -m 0700 "$(dirname "$install_root")" "$user_home/.local/bin"
+  rm -rf -- "$install_root"
+  mv "$extract_dir" "$install_root"
+  ln -sfn "$install_root/$relative_binary" "$target_bin"
+  chown -R "$linux_user:$linux_user" "$user_home/.local/share/figcraft-cli" "$target_bin"
+  rm -rf -- "$tmpdir"
+}
+
+install_shiori() {
+  as_user sh -c 'curl -fsSL https://raw.githubusercontent.com/Dragonshorn-Studios/shiori-brain/main/scripts/shiori-doctor.sh | sh -s -- --install opencode'
 }
 
 install_lerd_postrestart() {
@@ -559,7 +640,7 @@ EOF
 fi
 
 for tool in "${selected_tools[@]}"; do
-  [[ $tool == lerd ]] && continue
+  [[ $tool == lerd || $tool == shiori ]] && continue
   tool_checkpoint="tool-$tool-v1"
   if checkpoint_done "$tool_checkpoint" && tool_is_installed "$tool"; then
     step "Skipping completed optional tool: $tool"
@@ -574,6 +655,7 @@ for tool in "${selected_tools[@]}"; do
   step "Installing optional tool: $tool"
   case "$tool" in
     devin) install_devin ;;
+    figcraft) install_figcraft ;;
     gh) install_gh ;;
     glab) install_glab ;;
     go) install_go ;;
@@ -588,6 +670,23 @@ for tool in "${selected_tools[@]}"; do
   fi
   checkpoint_mark "$tool_checkpoint"
 done
+
+# Shiori is intentionally last: it inspects the finished agent environment and
+# links the generated shared skills only after every selected CLI is ready.
+if has_tool shiori; then
+  tool_checkpoint='tool-shiori-v1'
+  if checkpoint_done "$tool_checkpoint" && tool_is_installed shiori; then
+    step 'Skipping completed Shiori Brain skill installation'
+  elif tool_is_installed shiori; then
+    step 'Recording already installed Shiori Brain skills'
+    checkpoint_mark "$tool_checkpoint"
+  else
+    step 'Installing Shiori Brain shared skills'
+    install_shiori
+    tool_is_installed shiori
+    checkpoint_mark "$tool_checkpoint"
+  fi
+fi
 
 profile_checkpoint="shell-profile-v1-$linux_user"
 if ! checkpoint_done "$profile_checkpoint" || [[ ! -f /etc/profile.d/99-ubuntu-imps.sh ]]; then

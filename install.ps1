@@ -12,7 +12,7 @@ param(
 
     [string]$GitEmail = 'ubuntu-imps@localhost',
 
-    [ValidateSet('all', 'devin', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode')]
+    [ValidateSet('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')]
     [string[]]$Tools = @(),
 
     [switch]$SetupOnly,
@@ -46,7 +46,7 @@ if (-not $ResetDistro) {
     }
 }
 
-$allowedTools = @('all', 'devin', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'uv', 'zcode')
+$allowedTools = @('all', 'devin', 'figcraft', 'gh', 'glab', 'go', 'gt', 'lerd', 'node', 'shiori', 'uv', 'zcode')
 $invalidTools = @($Tools | Where-Object { $_ -notin $allowedTools })
 if ($invalidTools.Count -gt 0) {
     throw "Unknown tool(s): $($invalidTools -join ', '). Allowed values: $($allowedTools -join ', ')."

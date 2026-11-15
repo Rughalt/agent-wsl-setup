@@ -13,7 +13,8 @@ credentials, Git configuration, or files from an existing Ubuntu installation.
   WSL distributions.
 - Adds a local guardrail against direct pushes to `main` and `master`.
 - Optionally installs Node through NVM, Go, `uv`, Lerd, GitHub CLI (`gh`),
-  GitLab CLI (`glab`), Gitea CLI (`gt`), Devin CLI, and ZCode CLI.
+  GitLab CLI (`glab`), Gitea CLI (`gt`), Devin CLI, ZCode CLI, FigCraft CLI,
+  and the shared Shiori Brain skills.
 
 WSL is useful environment separation, **not a strong security boundary**. Use a
 separate VM for untrusted code. Enforce branch protection and least privilege on
@@ -166,6 +167,8 @@ rules.
 | `gt` | Official Gitea installer, which verifies its downloaded binary |
 | `devin` | Binary from the official `static.devin.ai` release manifest, with its SHA-256 verified; interactive setup is never launched |
 | `zcode` | Official `zai-org/ZCode` source; Node is downloaded from nodejs.org and checksum-verified, then the CLI is built with the versions pinned by upstream |
+| `figcraft` | Latest official `storytold/figcraft` Linux release for the current architecture; `SHA256SUMS.txt` is verified and `figcraft-cli` includes the MCP server |
+| `shiori` | Runs the official `Dragonshorn-Studios/shiori-brain` doctor last, creating a managed checkout and linking generated skills into `~/.agents/skills` |
 | `node` | NVM from the pinned official installer, followed by the latest Node LTS |
 | `go` | Latest stable archive from go.dev, verified using the official release checksum |
 | `uv` | Official Astral standalone installer into the unprivileged user's home |
@@ -179,6 +182,10 @@ Lerd needs systemd and rootless Podman. The setup enables systemd, restarts the
 distribution, installs Lerd in the second phase, and grants only the temporary
 bootstrap permission needed by its official installer. Day-to-day Lerd usage
 runs as `imps` without sudo.
+
+Shiori Brain is installed after every selected CLI. It uses the repository's
+official doctor in `opencode` compatibility mode, which installs the shared
+Agent Skills without requiring OpenCode itself. It does not copy credentials.
 
 ## Removal
 
