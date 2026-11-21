@@ -13,6 +13,7 @@ credentials, Git configuration, or files from an existing Ubuntu installation.
   WSL distributions.
 - Adds a local guardrail against direct pushes to `main` and `master`.
 - Adds an Ubuntu-Imps login banner and a local purple/pink Oh My Posh theme.
+- Adds a matching purple/pink `😈 Ubuntu-Imps` profile to Windows Terminal without modifying its main settings file.
 - Optionally installs Node through NVM, Playwright with Chromium, Go, `uv`, Lerd, GitHub CLI (`gh`),
   GitLab CLI (`glab`), Gitea CLI (`gt`), Devin CLI, ZCode CLI, FigCraft CLI,
   and the shared Shiori Brain skills.

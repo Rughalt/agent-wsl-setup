@@ -28,7 +28,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $script:Step = 0
-$script:TotalSteps = 4
+$script:TotalSteps = 5
 
 function Show-Step {
     param([Parameter(Mandatory)][string]$Message)
@@ -109,6 +109,68 @@ function Ensure-LinuxUserPassword {
     }
 }
 
+function Install-WindowsTerminalProfile {
+    param([Parameter(Mandatory)][string]$DistributionName)
+
+    $fragmentDirectory = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\Fragments\Ubuntu-Imps'
+    $fragmentPath = Join-Path $fragmentDirectory "$DistributionName.json"
+    $schemeName = "$DistributionName Imp Workshop"
+    $profileName = "😈 $DistributionName"
+    $fragment = [ordered]@{
+        profiles = @(
+            [ordered]@{
+                name                     = $profileName
+                commandline              = "wsl.exe --distribution $DistributionName"
+                colorScheme              = $schemeName
+                tabColor                 = '#CBA6F7'
+                cursorShape              = 'bar'
+                opacity                  = 94
+                useAcrylic               = $true
+                suppressApplicationTitle = $false
+                hidden                   = $false
+                font                     = [ordered]@{
+                    face = 'Cascadia Mono'
+                    size = 11
+                }
+            }
+        )
+        schemes = @(
+            [ordered]@{
+                name                = $schemeName
+                background          = '#11111B'
+                foreground          = '#CDD6F4'
+                cursorColor         = '#F5C2E7'
+                selectionBackground = '#585B70'
+                black               = '#45475A'
+                red                 = '#F38BA8'
+                green               = '#A6E3A1'
+                yellow              = '#F9E2AF'
+                blue                = '#89B4FA'
+                purple              = '#CBA6F7'
+                cyan                = '#94E2D5'
+                white               = '#BAC2DE'
+                brightBlack         = '#585B70'
+                brightRed           = '#F38BA8'
+                brightGreen         = '#A6E3A1'
+                brightYellow        = '#F9E2AF'
+                brightBlue          = '#89B4FA'
+                brightPurple        = '#F5C2E7'
+                brightCyan          = '#89DCEB'
+                brightWhite         = '#CDD6F4'
+            }
+        )
+    }
+
+    New-Item -ItemType Directory -Path $fragmentDirectory -Force | Out-Null
+    $json = $fragment | ConvertTo-Json -Depth 6
+    [System.IO.File]::WriteAllText(
+        $fragmentPath,
+        $json + [Environment]::NewLine,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    Write-Host "Windows Terminal profile added: $profileName" -ForegroundColor Green
+}
+
 if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
     throw 'WSL is not installed. Install the current Microsoft Store version of WSL first.'
 }
@@ -131,7 +193,7 @@ $selectedTools = @(
         $Tools | Sort-Object -Unique
     }
 )
-$script:TotalSteps = if ($selectedTools -contains 'lerd') { 5 } else { 4 }
+$script:TotalSteps = if ($selectedTools -contains 'lerd') { 6 } else { 5 }
 
 $installed = @(& wsl.exe --list --quiet) |
     ForEach-Object { ($_ -replace "`0", '').Trim() } |
@@ -240,6 +302,9 @@ if ($selectedTools -contains 'lerd') {
     }
     Invoke-Wsl @('--terminate', $DistroName)
 }
+
+Show-Step 'Adding the Windows Terminal profile and color scheme'
+Install-WindowsTerminalProfile -DistributionName $DistroName
 
 Show-Step 'Finished'
 Write-Progress -Activity 'Ubuntu-Imps' -Completed
