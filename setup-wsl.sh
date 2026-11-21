@@ -824,6 +824,10 @@ install -d -o "$linux_user" -g "$linux_user" -m 0700 \
   "$user_home" \
   "$user_home/.ssh" \
   "$user_home/work" \
+  "$user_home/.local" \
+  "$user_home/.local/bin" \
+  "$user_home/.local/share" \
+  "$user_home/.local/state" \
   "$user_home/.config" \
   "$user_home/.config/git" \
   "$user_home/.config/git/hooks"
