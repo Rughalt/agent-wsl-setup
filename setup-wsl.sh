@@ -432,7 +432,22 @@ install_figcraft() {
 }
 
 install_shiori() {
-  as_user sh -c 'curl -fsSL https://raw.githubusercontent.com/Dragonshorn-Studios/shiori-brain/main/scripts/shiori-doctor.sh | sh -s -- --install opencode'
+  if ! tool_is_installed node; then
+    echo 'Node.js is required by the Shiori MCP server; installing Node LTS through NVM first.'
+    install_node
+  fi
+
+  as_user bash -o pipefail -c '
+    operation=install
+    if [[ -d "$HOME/.local/share/shiori/shiori-brain/.git" ]]; then
+      operation=update
+    fi
+    if [[ -s "$HOME/.nvm/nvm.sh" ]]; then
+      . "$HOME/.nvm/nvm.sh"
+    fi
+    curl -fsSL https://raw.githubusercontent.com/Dragonshorn-Studios/shiori-brain/main/scripts/shiori-doctor.sh |
+      sh -s -- "--$operation" opencode
+  '
 }
 
 configure_lerd_podman_backend() {
@@ -955,14 +970,11 @@ done
 # Shiori is intentionally last: it inspects the finished agent environment and
 # links the generated shared skills only after every selected CLI is ready.
 if has_tool shiori; then
-  tool_checkpoint='tool-shiori-v1'
+  tool_checkpoint='tool-shiori-v2'
   if checkpoint_done "$tool_checkpoint" && tool_is_installed shiori; then
     step 'Skipping completed Shiori Brain skill installation'
-  elif tool_is_installed shiori; then
-    step 'Recording already installed Shiori Brain skills'
-    checkpoint_mark "$tool_checkpoint"
   else
-    step 'Installing Shiori Brain shared skills'
+    step 'Installing or updating Shiori Brain skills and MCP configuration'
     install_shiori
     tool_is_installed shiori
     checkpoint_mark "$tool_checkpoint"
